@@ -1,0 +1,3 @@
+id,Peso_Corporeo_kg,BCS,DIM_Giorni_Lattazione,Parita,Giorni_Gravidanza,Produzione_Latte_kg,Grasso_perc,Proteine_perc,SCC,Ruminazione_min,pH_Ruminale,BHB_mmol_L,Manure_Score,THI
+1234567890123456,652.0,3.28,258.0,1.0,172.0,31.3,4.17,3.3,294000.0,426.0,6.61,0.68,3.0,56.0
+9999999999999999,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
