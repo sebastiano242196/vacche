@@ -3,13 +3,15 @@ from tkinter import ttk, messagebox
 import csv
 import os
 
+# Importiamo la nostra funzione personalizzata dal file esterno
+from dieta import calcola_razioni
+
 class AppStalla:
     def __init__(self, root):
         self.root = root
-        self.root.title("Gestione Dati Stalla")
+        self.root.title("Gestione Dati Stalla e Diete")
         self.root.geometry("1200x600")
 
-        # Imposta il nome del file che si aspetta di trovare nella stessa cartella
         self.filepath = "vacche.csv" 
         
         self.colonne = [
@@ -19,7 +21,6 @@ class AppStalla:
         ]
 
         self.setup_ui()
-        # Carica i dati automaticamente all'avvio
         self.carica_csv()
 
     def setup_ui(self):
@@ -27,10 +28,11 @@ class AppStalla:
         frame_btn = tk.Frame(self.root)
         frame_btn.pack(fill=tk.X, padx=10, pady=10)
 
-        tk.Button(frame_btn, text="Salva Modifiche su CSV", command=self.salva_csv, width=25, bg="lightgreen").pack(side=tk.LEFT, padx=5)
-        tk.Button(frame_btn, text="Modifica Vacca Selezionata", command=self.modifica_record, width=25, bg="lightblue").pack(side=tk.LEFT, padx=5)
-        # Nuovo pulsante per aggiungere una vacca
-        tk.Button(frame_btn, text="Aggiungi Vacca", command=self.aggiungi_record, width=20, bg="lightpink").pack(side=tk.LEFT, padx=5)
+        tk.Button(frame_btn, text="Salva Modifiche", command=self.salva_csv, width=15, bg="lightgreen").pack(side=tk.LEFT, padx=5)
+        tk.Button(frame_btn, text="Aggiungi Vacca", command=self.aggiungi_record, width=15, bg="lightpink").pack(side=tk.LEFT, padx=5)
+        tk.Button(frame_btn, text="Modifica Selezionata", command=self.modifica_record, width=20, bg="lightblue").pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(frame_btn, text="Mostra Dieta", command=self.mostra_dieta, width=15, bg="orange", font=("Arial", 10, "bold")).pack(side=tk.RIGHT, padx=15)
 
         # --- Tabella dei Dati (Treeview) ---
         frame_tabella = tk.Frame(self.root)
@@ -53,12 +55,11 @@ class AppStalla:
             self.tree.heading(col, text=col)
             self.tree.column(col, width=120, anchor=tk.CENTER)
 
-        # Doppio clic su una riga per modificarla
         self.tree.bind("<Double-1>", lambda event: self.modifica_record())
 
     def carica_csv(self):
         if not os.path.exists(self.filepath):
-            messagebox.showwarning("File non trovato", f"Non ho trovato il file '{self.filepath}' nella cartella corrente.\nAssicurati che il nome sia corretto o inizia ad aggiungere nuove vacche.")
+            messagebox.showwarning("File non trovato", f"Non ho trovato il file '{self.filepath}'.")
             return
 
         for row in self.tree.get_children():
@@ -77,7 +78,7 @@ class AppStalla:
         try:
             with open(self.filepath, mode='w', newline='', encoding='utf-8') as file:
                 writer = csv.writer(file)
-                writer.writerow(self.colonne)  # Scrive l'intestazione
+                writer.writerow(self.colonne)
                 for row_id in self.tree.get_children():
                     row_data = self.tree.item(row_id)['values']
                     writer.writerow(row_data)
@@ -113,10 +114,9 @@ class AppStalla:
             self.tree.item(item_id, values=nuovi_valori)
             dialog.destroy()
 
-        tk.Button(dialog, text="Applica (Ricordati poi di Salvare)", command=applica_modifiche, bg="yellow").pack(pady=20)
+        tk.Button(dialog, text="Applica", command=applica_modifiche, bg="yellow").pack(pady=20)
 
     def aggiungi_record(self):
-        # Finestra per l'inserimento di una nuova vacca
         dialog = tk.Toplevel(self.root)
         dialog.title("Aggiungi Nuova Vacca")
         dialog.geometry("450x650")
@@ -128,25 +128,62 @@ class AppStalla:
             tk.Label(frame, text=col, width=25, anchor="w").pack(side=tk.LEFT)
             entry = tk.Entry(frame)
             entry.pack(side=tk.RIGHT, expand=True, fill=tk.X)
-            # Inseriamo uno "0" di default per praticità, tranne per l'ID che lasciamo vuoto
             if col != "id":
                 entry.insert(0, "0")
             entries[col] = entry
 
         def inserisci_nuova():
             nuovi_valori = [entries[col].get() for col in self.colonne]
-            
-            # Controllo basilare: assicurarsi che almeno l'ID sia stato inserito
             if not nuovi_valori[0].strip():
                 messagebox.showwarning("Attenzione", "L'ID della vacca è obbligatorio!", parent=dialog)
                 return
-                
-            # Inserisce la nuova riga in fondo alla tabella
             self.tree.insert("", tk.END, values=nuovi_valori)
             dialog.destroy()
 
         tk.Button(dialog, text="Aggiungi in Tabella", command=inserisci_nuova, bg="lightpink").pack(pady=20)
 
+    def mostra_dieta(self):
+        selezionato = self.tree.selection()
+        if not selezionato:
+            messagebox.showwarning("Attenzione", "Seleziona prima una vacca dalla tabella.")
+            return
+
+        item_id = selezionato[0]
+        valori_attuali = self.tree.item(item_id)['values']
+        id_vacca = valori_attuali[0]
+
+        # Raccoglie i dati in un dizionario
+        input_dict = {}
+        for i, col in enumerate(self.colonne):
+            if col != "id":
+                try:
+                    input_dict[col] = float(valori_attuali[i])
+                except ValueError:
+                    input_dict[col] = 0.0
+
+        try:
+            # --- CHIAMATA ALLA FUNZIONE DEL FILE ESTERNO ---
+            risultato = calcola_razioni(input_dict)
+            
+            # Prendiamo solo il primo valore visto che il modello restituisce due numeri identici
+            val_foraggi = risultato['Foraggi'][0]
+            val_concentrati = risultato['Concentrati'][0]
+            
+            # Formattazione migliorata del messaggio
+            messaggio = (
+                f"ID Vacca:\t{id_vacca}\n"
+                f"---------------------------------------------------\n"
+                f"Foraggi:\t\t{val_foraggi} kg\n"
+                f" Concentrati:\t{val_concentrati} kg\n"
+            )
+            
+            messagebox.showinfo("Risultato Calcolo Dieta", messaggio)
+
+        except FileNotFoundError:
+            messagebox.showerror("Errore", "Impossibile trovare 'modello_vacche.pkl'.\nAssicurati che sia nella stessa cartella.")
+        except Exception as e:
+            messagebox.showerror("Errore", f"Si è verificato un errore durante il calcolo:\n{e}")
+            
 if __name__ == "__main__":
     root = tk.Tk()
     app = AppStalla(root)
