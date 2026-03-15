@@ -14,10 +14,11 @@ class AppStalla:
 
         self.filepath = "vacche.csv" 
         
+        # Le colonne di input aggiornate (senza i Target e senza THI)
         self.colonne = [
             "id", "Peso_Corporeo_kg", "BCS", "DIM_Giorni_Lattazione", "Parita",
             "Giorni_Gravidanza", "Produzione_Latte_kg", "Grasso_perc", "Proteine_perc",
-            "SCC", "Ruminazione_min", "pH_Ruminale", "BHB_mmol_L", "Manure_Score", "THI"
+            "SCC", "Ruminazione_min", "pH_Ruminale", "BHB_mmol_L", "Manure_Score"
         ]
 
         self.setup_ui()
@@ -143,47 +144,85 @@ class AppStalla:
         tk.Button(dialog, text="Aggiungi in Tabella", command=inserisci_nuova, bg="lightpink").pack(pady=20)
 
     def mostra_dieta(self):
-        selezionato = self.tree.selection()
-        if not selezionato:
-            messagebox.showwarning("Attenzione", "Seleziona prima una vacca dalla tabella.")
-            return
+            selezionato = self.tree.selection()
+            if not selezionato:
+                messagebox.showwarning("Attenzione", "Seleziona prima una vacca dalla tabella.")
+                return
 
-        item_id = selezionato[0]
-        valori_attuali = self.tree.item(item_id)['values']
-        id_vacca = valori_attuali[0]
+            item_id = selezionato[0]
+            valori_attuali = self.tree.item(item_id)['values']
+            id_vacca = valori_attuali[0]
 
-        # Raccoglie i dati in un dizionario
-        input_dict = {}
-        for i, col in enumerate(self.colonne):
-            if col != "id":
-                try:
-                    input_dict[col] = float(valori_attuali[i])
-                except ValueError:
-                    input_dict[col] = 0.0
+            # Raccoglie i dati in un dizionario
+            input_dict = {}
+            for i, col in enumerate(self.colonne):
+                if col != "id":
+                    try:
+                        input_dict[col] = float(valori_attuali[i])
+                    except ValueError:
+                        input_dict[col] = 0.0
 
-        try:
-            # --- CHIAMATA ALLA FUNZIONE DEL FILE ESTERNO ---
-            risultato = calcola_razioni(input_dict)
-            
-            # Prendiamo solo il primo valore visto che il modello restituisce due numeri identici
-            val_foraggi = risultato['Foraggi'][0]
-            val_concentrati = risultato['Concentrati'][0]
-            
-            # Formattazione migliorata del messaggio
-            messaggio = (
-                f"ID Vacca:\t{id_vacca}\n"
-                f"---------------------------------------------------\n"
-                f"Foraggi:\t\t{val_foraggi} kg\n"
-                f" Concentrati:\t{val_concentrati} kg\n"
-            )
-            
-            messagebox.showinfo("Risultato Calcolo Dieta", messaggio)
+            try:
+                # --- CHIAMATA ALLA FUNZIONE DEL FILE ESTERNO ---
+                risultato = calcola_razioni(input_dict)
+                
+                # --- CREAZIONE FINESTRA CUSTOM (Sostituisce il messagebox) ---
+                win_dieta = tk.Toplevel(self.root)
+                win_dieta.title("Risultato Calcolo Dieta")
+                win_dieta.geometry("320x450")
+                
+                # Titolo
+                tk.Label(win_dieta, text=f"ID Vacca: {id_vacca}", font=("Arial", 12, "bold")).pack(pady=10)
+                
+                # Frame per la griglia
+                frame_dati = tk.Frame(win_dieta)
+                frame_dati.pack(padx=20, fill=tk.BOTH, expand=True)
+                
+                # --- SEZIONE FORAGGI ---
+                tk.Label(frame_dati, text="FORAGGI", font=("Arial", 10, "bold"), fg="darkgreen").grid(row=0, column=0, sticky="w", pady=(10, 5))
+                
+                foraggi = [
+                    ("Erba Medica", risultato['Erba_Medica']),
+                    ("Insilato Erba", risultato['Insilato_Erba']),
+                    ("Fieno 1° Taglio", risultato['Fieno_1_Taglio']),
+                    ("Fieno 2° Taglio", risultato['Fieno_2_Taglio']),
+                    ("Fieno 3° Taglio", risultato['Fieno_3_Taglio'])
+                ]
+                
+                riga = 1
+                for nome, val in foraggi:
+                    tk.Label(frame_dati, text=f"• {nome}:", font=("Arial", 10)).grid(row=riga, column=0, sticky="w", padx=10)
+                    # Formattiamo il numero per avere sempre 2 decimali (es: 3.50 invece di 3.5)
+                    tk.Label(frame_dati, text=f"{val:.2f} kg", font=("Arial", 10)).grid(row=riga, column=1, sticky="e")
+                    riga += 1
+                    
+                # --- SEZIONE CONCENTRATI ---
+                tk.Label(frame_dati, text="CONCENTRATI", font=("Arial", 10, "bold"), fg="darkorange").grid(row=riga, column=0, sticky="w", pady=(15, 5))
+                riga += 1
+                
+                concentrati = [
+                    ("Mais", risultato['Mais']),
+                    ("Orzo", risultato['Orzo']),
+                    ("Soia", risultato['Soia']),
+                    ("Crusca", risultato['Crusca']),
+                    ("Mangimi Vari", risultato['Mangimi_Vari'])
+                ]
+                
+                for nome, val in concentrati:
+                    tk.Label(frame_dati, text=f"• {nome}:", font=("Arial", 10)).grid(row=riga, column=0, sticky="w", padx=10)
+                    tk.Label(frame_dati, text=f"{val:.2f} kg", font=("Arial", 10)).grid(row=riga, column=1, sticky="e")
+                    riga += 1
+                    
+                # Permettiamo alla colonna di sinistra di espandersi, spingendo i numeri tutti a destra
+                frame_dati.columnconfigure(0, weight=1)
+                
+                # Pulsante di chiusura
+                tk.Button(win_dieta, text="Chiudi", command=win_dieta.destroy, width=15).pack(pady=15)
 
-        except FileNotFoundError:
-            messagebox.showerror("Errore", "Impossibile trovare 'modello_vacche.pkl'.\nAssicurati che sia nella stessa cartella.")
-        except Exception as e:
-            messagebox.showerror("Errore", f"Si è verificato un errore durante il calcolo:\n{e}")
-            
+            except FileNotFoundError:
+                messagebox.showerror("Errore", "Impossibile trovare 'modello_vacche.pkl'.\nAssicurati che sia nella stessa cartella.")
+            except Exception as e:
+                messagebox.showerror("Errore", f"Si è verificato un errore durante il calcolo:\n{e}")
 if __name__ == "__main__":
     root = tk.Tk()
     app = AppStalla(root)
