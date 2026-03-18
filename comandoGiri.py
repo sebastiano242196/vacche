@@ -1,83 +1,145 @@
 import serial
 import time
-from mfrc522 import SimpleMFRC522
-
 import pandas as pd
 import joblib
+import os
+from datetime import datetime
+from mfrc522 import SimpleMFRC522
+import RPi.GPIO as GPIO
 
-rapportoForaggi = 0.1 # kg al giro
-rapportoConcentrati = 0.1 # kg al giro
+# --- COSTANTI ---
+rapportoForaggi = 22.5 / 1000
+rapportoConcentrati = 22.5 / 1000
+COOLDOWN_TEMPO = 10  # Secondi per silenziare letture multiple
 
-def ottieni_dati_vacca(cow_id):
+# --- PERCORSI FILE ---
+print("Caricamento dati e modello in corso...")
+file_path_csv = '/home/admin/vacche/vacche.csv'
+file_path_modello = '/home/admin/vacche/modello_vacche.pkl'
+file_path_registro = '/home/admin/vacche/registro_pasti.csv'
 
-    # Caricamento del file CSV
-    file_path='/home/admin/vacche/vacche.csv'
-    df = pd.read_csv(file_path)
-    
-    # Filtra la riga corrispondente all'id fornito
-    riga = df[df['id'] == cow_id]
-    
-    # Rimuove la colonna 'id' dal risultato, prende la prima riga trovata (iloc[0]) 
-    # e la trasforma in un dizionario
-    dati_dizionario = riga.drop(columns=['id']).iloc[0].to_dict()
-    return dati_dizionario
+# Caricamento file e modello
+df = pd.read_csv(file_path_csv)
+df['id'] = df['id'].astype(str)
+modello = joblib.load(file_path_modello)
 
-def calcolo(input):
-    # 1. Carica il modello
-    modello = joblib.load('/home/admin/vacche/modello_vacche.pkl')
-    
-    # 3. Converti in DataFrame e ordina le colonne esattamente come nel modello
-    input_df = pd.DataFrame([input])
-    input_df = input_df[modello.feature_names_in_]
+# Dizionario per evitare letture doppie immediate
+ultime_letture = {}
 
-    # 4. Fai la predizione (restituisce un array 2D, es: [[12.5, 9.2]])
-    previsione_array = modello.predict(input_df)
-    
-    # 5. Inserisci i risultati direttamente in un dizionario
-    # valore -> (Massa, Giri)
-    risultato_dict = {
-        'Foraggi' : (round(float(previsione_array[0][0]), 2), round(float(previsione_array[0][0]), 2)/rapportoForaggi),
-        'Concentrati' : (round(float(previsione_array[0][1]), 2), round(float(previsione_array[0][1]), 2)/rapportoConcentrati)
-    }
-    
-    return risultato_dict
-    
-# inizializza lettore RFID
+# --- INIZIALIZZAZIONE HARDWARE ---
+print("Inizializzazione lettore RFID e Seriale...")
 reader = SimpleMFRC522()
 
-# Configurazione porta seriale
-ser = serial.Serial('/dev/ttyACM0', 9600, timeout=1)
-time.sleep(2)  # attende Arduino
+try:
+    ser = serial.Serial('/dev/ttyACM0', 9600, timeout=1)
+    time.sleep(2)  # attende il riavvio di Arduino
+except serial.SerialException:
+    print("ERRORE: Impossibile connettersi ad Arduino. Controlla il cavo o la porta USB.")
+    exit()
+
+# --- FUNZIONI DI REGISTRO ---
+
+def ha_gia_mangiato_oggi(cow_id):
+    """Controlla se la vacca ha già mangiato nella data odierna."""
+    if not os.path.exists(file_path_registro):
+        return False
+        
+    oggi = datetime.now().strftime('%Y-%m-%d')
+    cow_id_str = str(cow_id)
+    
+    df_pasti = pd.read_csv(file_path_registro)
+    
+    filtro = (df_pasti['id'].astype(str) == cow_id_str) & (df_pasti['data'] == oggi)
+    return not df_pasti[filtro].empty
+
+def registra_pasto(cow_id, kg_foraggi, kg_concentrati):
+    """Salva ID, Data e le quantità di razione in kg nel CSV."""
+    oggi = datetime.now().strftime('%Y-%m-%d')
+    file_esiste = os.path.exists(file_path_registro)
+    
+    with open(file_path_registro, 'a') as f:
+        if not file_esiste:
+            f.write("id,data,foraggi_kg,concentrati_kg\n")
+        f.write(f"{cow_id},{oggi},{kg_foraggi},{kg_concentrati}\n")
+
+# --- ALTRE FUNZIONI ---
+
+def ottieni_dati_vacca(cow_id):
+    """Cerca i parametri della vacca nel database precaricato."""
+    cow_id_str = str(cow_id)
+    riga = df[df['id'] == cow_id_str]
+    if riga.empty:
+        return None
+    return riga.drop(columns=['id']).iloc[0].to_dict()
+
+def calcolo(input_dict):
+    """Calcola la razione (Massa e Giri) usando il modello di Machine Learning."""
+    input_df = pd.DataFrame([input_dict])
+    input_df = input_df[modello.feature_names_in_]
+    previsione_array = modello.predict(input_df)
+    
+    risultato_dict = {
+        'Foraggi': (round(float(previsione_array[0][0]), 2), round(float(previsione_array[0][0]), 2) / rapportoForaggi),
+        'Concentrati': (round(float(previsione_array[0][1]), 2), round(float(previsione_array[0][1]), 2) / rapportoConcentrati)
+    }
+    return risultato_dict
 
 def muovi_motore(giri):
-    """Invia il numero di giri all'Arduino"""
-    comando = f"{giri}\n"
+    """Invia ad Arduino il numero di giri formattato a 2 decimali."""
+    comando = f"{giri:.2f}\n" 
     ser.write(comando.encode('utf-8'))
-    print(f"Inviato comando: {giri} giri")
+    print(f"-> Inviato comando ad Arduino: {comando.strip()} giri")
 
-def controlla_condizione():
-    """Controlla se viene letto un tag RFID"""
-    print("Avvicina il tag RFID...")
-    id, text = reader.read()  # questo blocca finché non rileva il tag
-    print("Tag rilevato UID:", id)
-    return id
+# --- CICLO PRINCIPALE ---
+print("\nSistema pronto! Avvicina il tag RFID...")
 
 try:
     while True:
-        ID = controlla_condizione()
-        if ID:
-            # UTILIZZARE FUNZIONE CALCOLO
-            print(ID)
-            numero_giri = calcolo(ottieni_dati_vacca(ID))["Foraggi"][1]
-            #numero_giri = input("Inserisci quanti giri vuoi far fare: ")
-            try:
-                valore = float(numero_giri)
-                muovi_motore(valore)
-            except ValueError:
-                print("Errore: Inserisci un numero valido!")
+        # Legge SOLO l'ID per evitare l'AUTH ERROR
+        id = reader.read_id()
+        
+        # Filtro Anti-Spam
+        tempo_attuale = time.time()
+        if id in ultime_letture and (tempo_attuale - ultime_letture[id]) < COOLDOWN_TEMPO:
+            time.sleep(0.5)
+            continue
+            
+        ultime_letture[id] = tempo_attuale
+        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Tag rilevato UID: {id}")
+        
+        dati_vacca = ottieni_dati_vacca(id)
+        if dati_vacca is None:
+            print(f"ATTENZIONE: Nessuna vacca trovata nel CSV con ID {id}.")
+            continue
+            
+        if ha_gia_mangiato_oggi(id):
+            print(f"STOP: La vacca {id} ha già ricevuto la sua razione oggi.")
+            continue
+            
+        print("Calcolo razione in corso...")
+        risultati_razione = calcolo(dati_vacca)
+        
+        kg_foraggi = risultati_razione["Foraggi"][0]
+        numero_giri_foraggi = risultati_razione["Foraggi"][1]
+        kg_concentrati = risultati_razione["Concentrati"][0]
+        
+        try:
+            valore = float(numero_giri_foraggi)
+            muovi_motore(valore)
+            
+            registra_pasto(id, kg_foraggi, kg_concentrati)
+            print(f"Pasto registrato! Dati salvati: {kg_foraggi} kg Foraggi, {kg_concentrati} kg Concentrati.")
+            
+        except ValueError:
+            print("ERRORE: Il calcolo non ha generato un numero di giri valido!")
 
-        time.sleep(0.1)
+        time.sleep(1)
 
 except KeyboardInterrupt:
-    print("\nChiusura programma...")
-    ser.close()
+    print("\nInterruzione da tastiera (Ctrl+C). Chiusura programma...")
+
+finally:
+    if 'ser' in locals() and ser.is_open:
+        ser.close()
+    GPIO.cleanup()
+    print("Porta seriale chiusa e pin GPIO ripuliti correttamente.")
