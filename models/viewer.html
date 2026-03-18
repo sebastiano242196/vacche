@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <title>Viewer 3D - Modello Mucca</title>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    #canvas { width: 100vw; height: 100vh; display: block; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.153.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.153.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script>
+    // Ottieni il parametro 'model' dalla query string
+    function getQueryParam(name) {
+      const params = new URLSearchParams(window.location.search);
+      return params.get(name);
+    }
+
+    const modelParam = getQueryParam('model');
+    const canvas = document.getElementById('canvas');
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({canvas, antialias: true});
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0xf0f0f0);
+
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1.0);
+    hemi.position.set(0, 200, 0);
+    scene.add(hemi);
+
+    const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+    dir.position.set(0, 200, 100);
+    scene.add(dir);
+
+    const ambient = new THREE.AmbientLight(0x888888);
+    scene.add(ambient);
+
+    const grid = new THREE.GridHelper(10, 10, 0x888888, 0xdddddd);
+    scene.add(grid);
+
+    camera.position.set(0, 1.2, 3);
+
+    let mixer;
+    const loader = new THREE.GLTFLoader();
+
+    function loadModel(url) {
+      loader.load(url, function(gltf) {
+        const model = gltf.scene || gltf.scenes[0];
+        // centriamo e scala minima
+        model.position.set(0, 0, 0);
+        model.rotation.set(0, 0, 0);
+        scene.add(model);
+
+        // adatta la telecamera al modello
+        const box = new THREE.Box3().setFromObject(model);
+        const size = box.getSize(new THREE.Vector3()).length();
+        const center = box.getCenter(new THREE.Vector3());
+        camera.position.copy(center);
+        camera.position.x += size * 0.8;
+        camera.position.y += size * 0.4;
+        camera.position.z += size * 0.8;
+        camera.lookAt(center);
+
+        // rotazione continua
+        function animate() {
+          requestAnimationFrame(animate);
+          model.rotation.y += 0.005;
+          renderer.render(scene, camera);
+        }
+        animate();
+
+      }, undefined, function(error) {
+        console.error('Errore caricamento modello GLB:', error);
+        alert('Impossibile caricare il modello: ' + error);
+      });
+    }
+
+    if (!modelParam) {
+      alert('Nessun modello specificato. Aggiungi ?model=path/al/modello.glb alla URL.');
+    } else {
+      // Se il path è relativo a file locale, funziona quando si apre con file://
+      loadModel(modelParam);
+    }
+
+    window.addEventListener('resize', function() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
