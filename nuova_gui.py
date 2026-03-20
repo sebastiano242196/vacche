@@ -24,7 +24,7 @@ class AppStalla:
     def __init__(self, root):
         self.root = root
         self.root.title("Gestione Dati Stalla e Diete")
-        self.root.geometry("1200x800") # Alzata un po' la finestra per far spazio al terminale
+        self.root.geometry("1200x800")
 
         self.filepath = "vacche.csv" 
         self.file_path_registro = "registro_pasti.csv"
@@ -51,7 +51,6 @@ class AppStalla:
         self.setup_ui()
         self.carica_csv()
         
-        # Avvia il loop che controlla se ci sono messaggi da stampare a schermo
         self.aggiorna_terminale_gui()
 
     def setup_ui(self):
@@ -63,7 +62,11 @@ class AppStalla:
         tk.Button(frame_btn, text="Aggiungi Vacca", command=self.aggiungi_record, width=15, bg="lightpink").pack(side=tk.LEFT, padx=5)
         tk.Button(frame_btn, text="Modifica Selezionata", command=self.modifica_record, width=20, bg="lightblue").pack(side=tk.LEFT, padx=5)
         
+        # Pulsanti di destra
         tk.Button(frame_btn, text="Mostra Dieta", command=self.mostra_dieta, width=15, bg="orange", font=("Arial", 10, "bold")).pack(side=tk.RIGHT, padx=15)
+        
+        # NUOVO PULSANTE: Gestione Pasti
+        tk.Button(frame_btn, text="Gestione Pasti", command=self.apri_gestione_pasti, width=15, bg="plum", font=("Arial", 10, "bold")).pack(side=tk.RIGHT, padx=5)
 
         # --- Frame Centrale (Tabella + Pannello Laterale) ---
         frame_centrale = tk.Frame(self.root)
@@ -134,7 +137,6 @@ class AppStalla:
         
         tk.Label(right_panel, text="-"*30).pack(pady=10)
         
-        # --- NUOVO PULSANTE AVVIA MANGIATOIA ---
         self.btn_mangiatoia = tk.Button(right_panel, text="▶ Avvia Mangiatoia", command=self.toggle_mangiatoia, bg="mediumseagreen", fg="white", font=("Arial", 11, "bold"))
         self.btn_mangiatoia.pack(pady=10, fill=tk.X)
 
@@ -146,8 +148,103 @@ class AppStalla:
         self.log_text.pack(fill=tk.X, padx=5, pady=5)
         self.log_text.config(state=tk.DISABLED)
 
+    # --- NUOVA SEZIONE: GESTIONE PASTI ---
+    def apri_gestione_pasti(self):
+        """Apre una finestra per visualizzare e modificare il registro_pasti.csv"""
+        win_pasti = tk.Toplevel(self.root)
+        win_pasti.title("Gestione Registro Pasti")
+        win_pasti.geometry("700x450")
+
+        colonne_pasti = ["id", "data", "foraggi_kg", "concentrati_kg"]
+
+        # Tabella
+        frame_tab = tk.Frame(win_pasti)
+        frame_tab.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        scroll_y = tk.Scrollbar(frame_tab, orient=tk.VERTICAL)
+        tree_pasti = ttk.Treeview(frame_tab, columns=colonne_pasti, show="headings", yscrollcommand=scroll_y.set)
+        scroll_y.config(command=tree_pasti.yview)
+        scroll_y.pack(side=tk.RIGHT, fill=tk.Y)
+        tree_pasti.pack(fill=tk.BOTH, expand=True)
+
+        intestazioni = {"id": "ID Vacca", "data": "Data", "foraggi_kg": "Foraggi (kg)", "concentrati_kg": "Concentrati (kg)"}
+        for col in colonne_pasti:
+            tree_pasti.heading(col, text=intestazioni[col])
+            tree_pasti.column(col, anchor=tk.CENTER)
+
+        # Funzione di caricamento dati
+        def carica_dati_pasti():
+            for row in tree_pasti.get_children():
+                tree_pasti.delete(row)
+            if os.path.exists(self.file_path_registro):
+                try:
+                    with open(self.file_path_registro, newline='', encoding='utf-8') as f:
+                        reader = csv.DictReader(f)
+                        for row in reader:
+                            tree_pasti.insert("", tk.END, values=(row.get('id',''), row.get('data',''), row.get('foraggi_kg',''), row.get('concentrati_kg','')))
+                except Exception as e:
+                    messagebox.showerror("Errore", f"Impossibile leggere il registro:\n{e}", parent=win_pasti)
+
+        carica_dati_pasti()
+
+        # Bottoni di controllo
+        btn_frame = tk.Frame(win_pasti)
+        btn_frame.pack(fill=tk.X, padx=10, pady=10)
+
+        def salva_registro():
+            try:
+                with open(self.file_path_registro, mode='w', newline='', encoding='utf-8') as f:
+                    writer = csv.writer(f)
+                    writer.writerow(colonne_pasti)
+                    for row_id in tree_pasti.get_children():
+                        writer.writerow(tree_pasti.item(row_id)['values'])
+                messagebox.showinfo("Successo", "Registro aggiornato correttamente!", parent=win_pasti)
+            except Exception as e:
+                messagebox.showerror("Errore", f"Impossibile salvare il file:\n{e}", parent=win_pasti)
+
+        def elimina_selezionato():
+            selezionato = tree_pasti.selection()
+            if non selezionato:
+                messagebox.showwarning("Attenzione", "Seleziona un pasto da eliminare.", parent=win_pasti)
+                return
+            for item in selezionato:
+                tree_pasti.delete(item)
+
+        def modifica_selezionato():
+            selezionato = tree_pasti.selection()
+            if not selezionato:
+                messagebox.showwarning("Attenzione", "Seleziona un pasto da modificare.", parent=win_pasti)
+                return
+            
+            item_id = selezionato[0]
+            valori_attuali = tree_pasti.item(item_id)['values']
+
+            dialog = tk.Toplevel(win_pasti)
+            dialog.title("Modifica Pasto")
+            dialog.geometry("300x250")
+
+            entries = {}
+            for i, col in enumerate(colonne_pasti):
+                f = tk.Frame(dialog)
+                f.pack(fill=tk.X, padx=15, pady=5)
+                tk.Label(f, text=intestazioni[col], width=12, anchor="w").pack(side=tk.LEFT)
+                entry = tk.Entry(f)
+                entry.pack(side=tk.RIGHT, expand=True, fill=tk.X)
+                entry.insert(0, str(valori_attuali[i]))
+                entries[col] = entry
+
+            def applica():
+                nuovi = [entries[c].get() for c in colonne_pasti]
+                tree_pasti.item(item_id, values=nuovi)
+                dialog.destroy()
+
+            tk.Button(dialog, text="Applica (Ricordati di Salvare)", command=applica, bg="yellow").pack(pady=15)
+
+        tk.Button(btn_frame, text="Salva Registro Su File", command=salva_registro, bg="lightgreen", width=20).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Modifica Selezionato", command=modifica_selezionato, bg="lightblue").pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Elimina Selezionato", command=elimina_selezionato, bg="lightpink").pack(side=tk.LEFT, padx=5)
+
     # --- FUNZIONI DI LOGICA INTERFACCIA ORIGINALI ---
-    
     def on_select(self, event):
         selezionato = self.tree.selection()
         if not selezionato: return
@@ -180,7 +277,6 @@ class AppStalla:
         frame = tk.Frame(dialog)
         frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        # Recupera dati reali
         dati = self.tutti_i_dati.get(id_vacca, {})
 
         for col in self.colonne:
@@ -386,35 +482,29 @@ class AppStalla:
         except Exception as e:
             messagebox.showerror("Errore", f"Si è verificato un errore durante il calcolo:\n{e}")
 
-    # --- NUOVA SEZIONE MANGIATOIA E LOGICA HARDWARE ---
+    # --- LOGICA HARDWARE E TERMINALE ---
     
     def log(self, messaggio):
-        """Mette il messaggio nella coda per scriverlo a schermo nel thread sicuro della GUI."""
         self.log_queue.put(messaggio)
         
     def aggiorna_terminale_gui(self):
-        """Scrive fisicamente i messaggi nel Text box. Eseguito in loop da Tkinter."""
         while not self.log_queue.empty():
             messaggio = self.log_queue.get()
             self.log_text.config(state=tk.NORMAL)
             self.log_text.insert(tk.END, messaggio + "\n")
-            self.log_text.see(tk.END) # Scorre in basso in automatico
+            self.log_text.see(tk.END)
             self.log_text.config(state=tk.DISABLED)
-        # Richiama se stessa ogni 100 millisecondi
         self.root.after(100, self.aggiorna_terminale_gui)
 
     def toggle_mangiatoia(self):
         if not self.mangiatoia_running:
-            # AVVIO
             self.mangiatoia_running = True
             self.btn_mangiatoia.config(text="⏹ Ferma Mangiatoia", bg="indianred")
             self.log(">>> INIZIALIZZAZIONE SISTEMA MANGIATOIA...")
             
-            # Crea e lancia il thread separato
             self.thread_mangiatoia = threading.Thread(target=self.loop_hardware_mangiatoia, daemon=True)
             self.thread_mangiatoia.start()
         else:
-            # STOP
             self.mangiatoia_running = False
             self.btn_mangiatoia.config(text="▶ Avvia Mangiatoia", bg="mediumseagreen")
             self.log(">>> RICHIESTA DI ARRESTO MANGIATOIA IN CORSO...")
@@ -439,9 +529,6 @@ class AppStalla:
             f.write(f"{cow_id},{oggi},{kg_foraggi},{kg_concentrati}\n")
 
     def loop_hardware_mangiatoia(self):
-        """Questo è il cuore dello script Arduino/RFID che gira nel THREAD SEPARATO."""
-        
-        # 1. SETUP HARDWARE
         ser = None
         reader = None
         if HARDWARE_AVAILABLE:
@@ -461,15 +548,12 @@ class AppStalla:
         ultime_letture = {}
         self.log("\nSISTEMA PRONTO! In attesa di tag RFID...")
 
-        # 2. LOOP PRINCIPALE
         while self.mangiatoia_running:
             id_letto = None
             
             if HARDWARE_AVAILABLE:
-                # La lettura reale (potrebbe bloccare il loop finché non legge qualcosa)
                 id_letto, text = reader.read()
             else:
-                # Simulazione: Mettiamo in pausa e finta lettura ogni 5 secondi per far girare il while
                 time.sleep(5)
                 # Scommenta questa riga se vuoi testare la simulazione inserendo un ID dal tuo CSV
                 # id_letto = "100000000001" 
@@ -478,7 +562,6 @@ class AppStalla:
                 id_str = str(id_letto)
                 tempo_attuale = time.time()
                 
-                # Filtro Anti-Spam
                 if id_str in ultime_letture and (tempo_attuale - ultime_letture[id_str]) < self.COOLDOWN_TEMPO:
                     time.sleep(0.5)
                     continue
@@ -486,7 +569,6 @@ class AppStalla:
                 ultime_letture[id_str] = tempo_attuale
                 self.log(f"\n[{datetime.now().strftime('%H:%M:%S')}] Rilevato Tag: {id_str}")
 
-                # Cerca la vacca in memoria
                 dati_vacca = self.tutti_i_dati.get(id_str)
                 if dati_vacca is None:
                     self.log(f"ATTENZIONE: Nessuna vacca trovata in archivio con ID {id_str}.")
@@ -498,25 +580,20 @@ class AppStalla:
 
                 self.log("Calcolo razione in corso...")
                 
-                # Preparazione input per il modello IA
                 input_dict = {}
                 for col in self.colonne:
                     if col == 'id': continue
                     try: input_dict[col] = float(dati_vacca.get(col, 0))
                     except: input_dict[col] = 0.0
                 
-                # Calcolo dieta usando il file dieta.py
                 try:
                     risultato = calcola_razioni(input_dict)
                     
-                    # Sommiamo i 10 ingredienti per ricavare Foraggi e Concentrati totali
                     kg_foraggi = round(risultato['Erba_Medica'] + risultato['Insilato_Erba'] + risultato['Fieno_1_Taglio'] + risultato['Fieno_2_Taglio'] + risultato['Fieno_3_Taglio'], 2)
                     kg_concentrati = round(risultato['Mais'] + risultato['Orzo'] + risultato['Soia'] + risultato['Crusca'] + risultato['Mangimi_Vari'], 2)
                     
-                    # Calcolo Giri Motore
                     giri_foraggi = kg_foraggi / self.rapportoForaggi
                     
-                    # Invio ad Arduino
                     if HARDWARE_AVAILABLE and ser:
                         comando = f"{giri_foraggi:.2f}\n" 
                         ser.write(comando.encode('utf-8'))
@@ -524,7 +601,6 @@ class AppStalla:
                     else:
                         self.log(f"-> [SIMULAZIONE] Comando che verrebbe inviato ad Arduino: {giri_foraggi:.2f} giri")
                     
-                    # Salva nel registro storico
                     self.registra_pasto(id_str, kg_foraggi, kg_concentrati)
                     self.log(f"✅ PASTO EROGATO! ({kg_foraggi}kg Foraggi, {kg_concentrati}kg Concentrati).")
                     
@@ -533,7 +609,6 @@ class AppStalla:
 
             time.sleep(0.5)
 
-        # 3. USCITA DAL LOOP
         self.log(">>> MANGIATOIA ARRESTATA CORRETTAMENTE.")
         if HARDWARE_AVAILABLE and ser and ser.is_open:
             ser.close()
