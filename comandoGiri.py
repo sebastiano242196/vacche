@@ -8,8 +8,8 @@ from mfrc522 import SimpleMFRC522
 import RPi.GPIO as GPIO
 
 # --- COSTANTI ---
-rapportoForaggi = 22.5 / 1000
-rapportoConcentrati = 22.5 / 1000
+rapportoForaggi = 22.5 / 100
+rapportoConcentrati = 22.5 / 100
 COOLDOWN_TEMPO = 10  # Secondi per silenziare letture multiple
 
 # --- PERCORSI FILE ---
