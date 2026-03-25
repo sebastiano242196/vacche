@@ -23,8 +23,33 @@ except ImportError:
 class AppStalla:
     def __init__(self, root):
         self.root = root
-        self.root.title("Gestione Dati Stalla e Diete")
-        self.root.geometry("1200x800")
+        self.root.title("Dashboard Gestione Stalla e Diete - Professional")
+        self.root.geometry("1400x900")
+        
+        # Colori Tema Professional
+        self.bg_color = "#f4f7f6"
+        self.primary_color = "#2c3e50"
+        self.secondary_color = "#18bc9c"
+        self.accent_color = "#e74c3c"
+        self.text_color = "#333333"
+        self.panel_bg = "#ffffff"
+        
+        self.root.configure(bg=self.bg_color)
+
+        style = ttk.Style()
+        style.theme_use("clam")
+        style.configure("Treeview", 
+                        background="#ffffff",
+                        foreground=self.text_color,
+                        rowheight=35,
+                        fieldbackground="#ffffff",
+                        font=("Segoe UI", 10))
+        style.configure("Treeview.Heading", 
+                        background=self.primary_color, 
+                        foreground="white", 
+                        font=("Segoe UI", 11, "bold"))
+        style.map("Treeview", 
+                  background=[("selected", self.secondary_color)])
 
         self.filepath = "vacche.csv" 
         self.file_path_registro = "registro_pasti.csv"
@@ -53,31 +78,58 @@ class AppStalla:
         
         self.aggiorna_terminale_gui()
 
-    def setup_ui(self):
-        # --- Barra dei Bottoni ---
-        frame_btn = tk.Frame(self.root)
-        frame_btn.pack(fill=tk.X, padx=10, pady=10)
+    def create_modern_button(self, parent, text, command, bg_color, fg_color="white", width=15):
+        btn = tk.Button(parent, text=text, command=command, width=width, 
+                        bg=bg_color, fg=fg_color, font=("Segoe UI", 10, "bold"),
+                        relief="flat", borderwidth=0, padx=10, pady=8, cursor="hand2")
+        btn.bind("<Enter>", lambda e: btn.configure(bg=self._lighten_color(bg_color)))
+        btn.bind("<Leave>", lambda e: btn.configure(bg=bg_color))
+        return btn
 
-        tk.Button(frame_btn, text="Salva Modifiche", command=self.salva_csv, width=15, bg="lightgreen").pack(side=tk.LEFT, padx=5)
-        tk.Button(frame_btn, text="Aggiungi Vacca", command=self.aggiungi_record, width=15, bg="lightpink").pack(side=tk.LEFT, padx=5)
-        tk.Button(frame_btn, text="Modifica Selezionata", command=self.modifica_record, width=20, bg="lightblue").pack(side=tk.LEFT, padx=5)
+    def _lighten_color(self, hex_color):
+        # A simple method to lighten a hex color
+        hex_color = hex_color.lstrip('#')
+        rgb = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+        rgb = tuple(min(255, int(c * 1.2)) for c in rgb)
+        return '#%02x%02x%02x' % rgb
+
+    def setup_ui(self):
+        # --- Header ---
+        header_frame = tk.Frame(self.root, bg=self.primary_color, height=60)
+        header_frame.pack(fill=tk.X, side=tk.TOP)
+        header_label = tk.Label(header_frame, text="Sistema Gestione Stalla Integrato", 
+                                bg=self.primary_color, fg="white", font=("Segoe UI", 16, "bold"))
+        header_label.pack(side=tk.LEFT, padx=20, pady=15)
+
+        # --- Barra dei Bottoni ---
+        frame_btn = tk.Frame(self.root, bg=self.bg_color)
+        frame_btn.pack(fill=tk.X, padx=20, pady=15)
+
+        self.create_modern_button(frame_btn, "💾 Salva Dati", self.salva_csv, self.secondary_color).pack(side=tk.LEFT, padx=5)
+        self.create_modern_button(frame_btn, "➕ Nuova Vacca", self.aggiungi_record, "#3498db").pack(side=tk.LEFT, padx=5)
+        self.create_modern_button(frame_btn, "✏️ Modifica", self.modifica_record, "#f39c12").pack(side=tk.LEFT, padx=5)
         
         # Pulsanti di destra
-        tk.Button(frame_btn, text="Mostra Dieta", command=self.mostra_dieta, width=15, bg="orange", font=("Arial", 10, "bold")).pack(side=tk.RIGHT, padx=15)
-        
-        # NUOVO PULSANTE: Gestione Pasti
-        tk.Button(frame_btn, text="Gestione Pasti", command=self.apri_gestione_pasti, width=15, bg="plum", font=("Arial", 10, "bold")).pack(side=tk.RIGHT, padx=5)
+        self.create_modern_button(frame_btn, "📊 Mostra Dieta", self.mostra_dieta, "#d35400", width=18).pack(side=tk.RIGHT, padx=5)
+        self.create_modern_button(frame_btn, "📋 Gestione Pasti", self.apri_gestione_pasti, "#9b59b6", width=18).pack(side=tk.RIGHT, padx=5)
 
         # --- Frame Centrale (Tabella + Pannello Laterale) ---
-        frame_centrale = tk.Frame(self.root)
-        frame_centrale.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+        frame_centrale = tk.Frame(self.root, bg=self.bg_color)
+        frame_centrale.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 20))
 
-        # --- Tabella dei Dati (Treeview) ---
-        frame_tabella = tk.Frame(frame_centrale)
-        frame_tabella.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        # --- Sezione Tabella ---
+        frame_tabella_container = tk.Frame(frame_centrale, bg=self.panel_bg, highlightbackground="#ddd", highlightthickness=1)
+        frame_tabella_container.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        title_tabella = tk.Label(frame_tabella_container, text="Registro Capi in Stalla", 
+                               bg=self.panel_bg, fg=self.primary_color, font=("Segoe UI", 12, "bold"))
+        title_tabella.pack(anchor="w", padx=15, pady=(15, 5))
 
-        scroll_y = tk.Scrollbar(frame_tabella, orient=tk.VERTICAL)
-        scroll_x = tk.Scrollbar(frame_tabella, orient=tk.HORIZONTAL)
+        frame_tabella = tk.Frame(frame_tabella_container, bg=self.panel_bg)
+        frame_tabella.pack(fill=tk.BOTH, expand=True, padx=15, pady=(0, 15))
+
+        scroll_y = ttk.Scrollbar(frame_tabella, orient=tk.VERTICAL)
+        scroll_x = ttk.Scrollbar(frame_tabella, orient=tk.HORIZONTAL)
 
         self.tree = ttk.Treeview(frame_tabella, columns=self.display_columns, show="headings",
                                  yscrollcommand=scroll_y.set, xscrollcommand=scroll_x.set)
@@ -90,8 +142,8 @@ class AppStalla:
         self.tree.pack(fill=tk.BOTH, expand=True)
 
         for col in self.display_columns:
-            width = 200 if col == 'name' else 120
-            label = 'Nome' if col == 'name' else 'ID'
+            width = 300 if col == 'name' else 150
+            label = 'Nome Identificativo' if col == 'name' else 'Matricola (ID)'
             self.tree.heading(col, text=label)
             self.tree.column(col, width=width, anchor=tk.CENTER)
 
@@ -100,14 +152,20 @@ class AppStalla:
         self._detail_item = None
 
         # --- Pannello laterale a destra ---
-        right_panel = tk.Frame(frame_centrale, width=260)
-        right_panel.pack(side=tk.RIGHT, fill=tk.Y, padx=10)
+        right_panel = tk.Frame(frame_centrale, width=320, bg=self.panel_bg, highlightbackground="#ddd", highlightthickness=1)
+        right_panel.pack(side=tk.RIGHT, fill=tk.Y, padx=(20, 0))
+        right_panel.pack_propagate(False)
 
-        tk.Label(right_panel, text='Selezione Vacca', font=("Arial", 11, "bold")).pack(pady=(5,10))
-        self.lbl_selected_id = tk.Label(right_panel, text='ID: -')
-        self.lbl_selected_id.pack(anchor='w', padx=5)
-        self.lbl_selected_name = tk.Label(right_panel, text='Nome: -')
-        self.lbl_selected_name.pack(anchor='w', padx=5, pady=(0,10))
+        title_detail = tk.Label(right_panel, text='Dettaglio Selezione', bg=self.panel_bg, fg=self.primary_color, font=("Segoe UI", 12, "bold"))
+        title_detail.pack(anchor='w', padx=15, pady=(15, 10))
+        
+        info_frame = tk.Frame(right_panel, bg="#f8f9fa", padx=10, pady=10)
+        info_frame.pack(fill=tk.X, padx=15, pady=5)
+
+        self.lbl_selected_id = tk.Label(info_frame, text='Matricola: -', bg="#f8f9fa", font=("Segoe UI", 10))
+        self.lbl_selected_id.pack(anchor='w', pady=2)
+        self.lbl_selected_name = tk.Label(info_frame, text='Nome: -', bg="#f8f9fa", font=("Segoe UI", 10, "bold"))
+        self.lbl_selected_name.pack(anchor='w', pady=2)
 
         def open_3d_viewer():
             sel = self.tree.selection()
@@ -133,19 +191,24 @@ class AppStalla:
             viewer_path = os.path.abspath(os.path.join(os.path.dirname(__file__), viewer)).replace('\\','/')
             webbrowser.open(f'file:///{viewer_path}?model=file:///{url}')
 
-        tk.Button(right_panel, text='Mostra 3D', command=open_3d_viewer, bg='lightblue').pack(pady=8)
+        self.create_modern_button(right_panel, "🐄 Visualizza Modello 3D", open_3d_viewer, "#34495e").pack(fill=tk.X, padx=15, pady=15)
         
-        tk.Label(right_panel, text="-"*30).pack(pady=10)
+        separator = ttk.Separator(right_panel, orient='horizontal')
+        separator.pack(fill=tk.X, padx=15, pady=10)
         
-        self.btn_mangiatoia = tk.Button(right_panel, text="▶ Avvia Mangiatoia", command=self.toggle_mangiatoia, bg="mediumseagreen", fg="white", font=("Arial", 11, "bold"))
-        self.btn_mangiatoia.pack(pady=10, fill=tk.X)
+        mangiatoia_title = tk.Label(right_panel, text='Controllo Mangiatoia', bg=self.panel_bg, fg=self.primary_color, font=("Segoe UI", 12, "bold"))
+        mangiatoia_title.pack(anchor='w', padx=15, pady=(10, 5))
+        
+        self.btn_mangiatoia = self.create_modern_button(right_panel, "▶ Avvia Sistema Autom.", self.toggle_mangiatoia, self.secondary_color)
+        self.btn_mangiatoia.pack(fill=tk.X, padx=15, pady=10)
 
         # --- TERMINALE LOG GUI ---
-        frame_log = tk.LabelFrame(self.root, text="Terminale Mangiatoia", font=("Arial", 10, "bold"))
-        frame_log.pack(fill=tk.X, padx=10, pady=(0, 10), side=tk.BOTTOM)
+        frame_log = tk.Frame(right_panel, bg=self.panel_bg)
+        frame_log.pack(fill=tk.BOTH, expand=True, padx=15, pady=(10, 15))
         
-        self.log_text = tk.Text(frame_log, height=10, bg="black", fg="lightgreen", font=("Consolas", 10))
-        self.log_text.pack(fill=tk.X, padx=5, pady=5)
+        tk.Label(frame_log, text="Log di Sistema", bg=self.panel_bg, fg="#7f8c8d", font=("Segoe UI", 9, "bold")).pack(anchor="w")
+        self.log_text = tk.Text(frame_log, bg="#1e1e1e", fg="#4af626", font=("Consolas", 9), relief="flat")
+        self.log_text.pack(fill=tk.BOTH, expand=True, pady=5)
         self.log_text.config(state=tk.DISABLED)
 
     # --- NUOVA SEZIONE: GESTIONE PASTI ---
@@ -153,21 +216,26 @@ class AppStalla:
         """Apre una finestra per visualizzare e modificare il registro_pasti.csv"""
         win_pasti = tk.Toplevel(self.root)
         win_pasti.title("Gestione Registro Pasti")
-        win_pasti.geometry("700x450")
+        win_pasti.geometry("800x500")
+        win_pasti.configure(bg="#f4f7f6")
+
+        header_frame = tk.Frame(win_pasti, bg="#8e44ad", height=60)
+        header_frame.pack(fill=tk.X, side=tk.TOP)
+        tk.Label(header_frame, text="Registro Alimentazione", bg="#8e44ad", fg="white", font=("Segoe UI", 16, "bold")).pack(side=tk.LEFT, padx=20, pady=15)
 
         colonne_pasti = ["id", "data", "foraggi_kg", "concentrati_kg"]
 
         # Tabella
-        frame_tab = tk.Frame(win_pasti)
-        frame_tab.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        frame_tab_container = tk.Frame(win_pasti, bg="#ffffff", highlightbackground="#ddd", highlightthickness=1)
+        frame_tab_container.pack(fill=tk.BOTH, expand=True, padx=20, pady=(20, 10))
 
-        scroll_y = tk.Scrollbar(frame_tab, orient=tk.VERTICAL)
-        tree_pasti = ttk.Treeview(frame_tab, columns=colonne_pasti, show="headings", yscrollcommand=scroll_y.set)
+        scroll_y = ttk.Scrollbar(frame_tab_container, orient=tk.VERTICAL)
+        tree_pasti = ttk.Treeview(frame_tab_container, columns=colonne_pasti, show="headings", yscrollcommand=scroll_y.set)
         scroll_y.config(command=tree_pasti.yview)
         scroll_y.pack(side=tk.RIGHT, fill=tk.Y)
         tree_pasti.pack(fill=tk.BOTH, expand=True)
 
-        intestazioni = {"id": "ID Vacca", "data": "Data", "foraggi_kg": "Foraggi (kg)", "concentrati_kg": "Concentrati (kg)"}
+        intestazioni = {"id": "ID Vacca", "data": "Data ed Ora", "foraggi_kg": "Foraggi Erogati (kg)", "concentrati_kg": "Concentrati Erogati (kg)"}
         for col in colonne_pasti:
             tree_pasti.heading(col, text=intestazioni[col])
             tree_pasti.column(col, anchor=tk.CENTER)
@@ -188,8 +256,8 @@ class AppStalla:
         carica_dati_pasti()
 
         # Bottoni di controllo
-        btn_frame = tk.Frame(win_pasti)
-        btn_frame.pack(fill=tk.X, padx=10, pady=10)
+        btn_frame = tk.Frame(win_pasti, bg="#f4f7f6")
+        btn_frame.pack(fill=tk.X, padx=20, pady=(0, 20))
 
         def salva_registro():
             try:
@@ -204,7 +272,7 @@ class AppStalla:
 
         def elimina_selezionato():
             selezionato = tree_pasti.selection()
-            if non selezionato:
+            if not selezionato:
                 messagebox.showwarning("Attenzione", "Seleziona un pasto da eliminare.", parent=win_pasti)
                 return
             for item in selezionato:
@@ -220,16 +288,19 @@ class AppStalla:
             valori_attuali = tree_pasti.item(item_id)['values']
 
             dialog = tk.Toplevel(win_pasti)
-            dialog.title("Modifica Pasto")
-            dialog.geometry("300x250")
+            dialog.title("Modifica Registrazione")
+            dialog.geometry("380x300")
+            dialog.configure(bg="#ffffff")
+
+            tk.Label(dialog, text="Aggiorna Dati Erogazione", font=("Segoe UI", 12, "bold"), bg="#ffffff", fg="#2c3e50").pack(pady=15)
 
             entries = {}
             for i, col in enumerate(colonne_pasti):
-                f = tk.Frame(dialog)
-                f.pack(fill=tk.X, padx=15, pady=5)
-                tk.Label(f, text=intestazioni[col], width=12, anchor="w").pack(side=tk.LEFT)
-                entry = tk.Entry(f)
-                entry.pack(side=tk.RIGHT, expand=True, fill=tk.X)
+                f = tk.Frame(dialog, bg="#ffffff")
+                f.pack(fill=tk.X, padx=20, pady=5)
+                tk.Label(f, text=intestazioni[col], width=18, anchor="w", bg="#ffffff", font=("Segoe UI", 9, "bold"), fg="#34495e").pack(side=tk.LEFT)
+                entry = tk.Entry(f, font=("Segoe UI", 10), bg="#f8f9fa", relief="solid")
+                entry.pack(side=tk.RIGHT, expand=True, fill=tk.X, ipady=3)
                 entry.insert(0, str(valori_attuali[i]))
                 entries[col] = entry
 
@@ -238,11 +309,14 @@ class AppStalla:
                 tree_pasti.item(item_id, values=nuovi)
                 dialog.destroy()
 
-            tk.Button(dialog, text="Applica (Ricordati di Salvare)", command=applica, bg="yellow").pack(pady=15)
+            btn_frame_dialog = tk.Frame(dialog, bg="#ffffff")
+            btn_frame_dialog.pack(pady=20)
+            self.create_modern_button(btn_frame_dialog, "Salva Modifiche", applica, "#f39c12", width=15).pack(side=tk.LEFT, padx=5)
+            self.create_modern_button(btn_frame_dialog, "Annulla", dialog.destroy, "#95a5a6", width=10).pack(side=tk.RIGHT, padx=5)
 
-        tk.Button(btn_frame, text="Salva Registro Su File", command=salva_registro, bg="lightgreen", width=20).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="Modifica Selezionato", command=modifica_selezionato, bg="lightblue").pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="Elimina Selezionato", command=elimina_selezionato, bg="lightpink").pack(side=tk.LEFT, padx=5)
+        self.create_modern_button(btn_frame, "💾 Salva Storico su File", salva_registro, "#16a085", width=22).pack(side=tk.LEFT, padx=5)
+        self.create_modern_button(btn_frame, "✏️ Modifica Valori", modifica_selezionato, "#2980b9", width=18).pack(side=tk.LEFT, padx=5)
+        self.create_modern_button(btn_frame, "🗑 Elimina Record", elimina_selezionato, "#c0392b", width=18).pack(side=tk.LEFT, padx=5)
 
     # --- FUNZIONI DI LOGICA INTERFACCIA ORIGINALI ---
     def on_select(self, event):
@@ -257,7 +331,7 @@ class AppStalla:
             name = dati.get('name','')
         else:
             if len(valori_vis) > 1: name = valori_vis[1]
-        self.lbl_selected_id.config(text=f'ID: {cow_id}')
+        self.lbl_selected_id.config(text=f'Matricola: {cow_id}')
         self.lbl_selected_name.config(text=f'Nome: {name}')
         if self._detail_window is not None and self._detail_item == item_id: return
         self.apri_dettagli(item_id)
@@ -269,25 +343,31 @@ class AppStalla:
             try: self._detail_window.destroy()
             except Exception: pass
         dialog = tk.Toplevel(self.root)
-        dialog.title(f"Dettagli Vacca: {id_vacca}")
-        dialog.geometry("480x600")
+        dialog.title(f"Scheda Dettaglio - Matricola {id_vacca}")
+        dialog.geometry("550x750")
+        dialog.configure(bg="#f4f7f6")
         self._detail_window = dialog
         self._detail_item = item_id
 
-        frame = tk.Frame(dialog)
-        frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        header = tk.Frame(dialog, bg="#2c3e50", height=50)
+        header.pack(fill=tk.X, side=tk.TOP)
+        tk.Label(header, text=f"Dati Vacca: {id_vacca}", bg="#2c3e50", fg="white", font=("Segoe UI", 14, "bold")).pack(side=tk.LEFT, padx=15, pady=10)
+
+        main_frame = tk.Frame(dialog, bg="#ffffff", highlightbackground="#ddd", highlightthickness=1)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
         
         dati = self.tutti_i_dati.get(id_vacca, {})
 
-        for col in self.colonne:
-            row = tk.Frame(frame)
-            row.pack(fill=tk.X, pady=3)
-            tk.Label(row, text=f"{col}", width=25, anchor='w').pack(side=tk.LEFT)
-            val = dati.get(col, "")
-            tk.Label(row, text=str(val), anchor='w').pack(side=tk.LEFT, expand=True)
+        for i, col in enumerate(self.colonne):
+            bg_col = "#f8f9fa" if i % 2 == 0 else "#ffffff"
+            row = tk.Frame(main_frame, bg=bg_col)
+            row.pack(fill=tk.X, pady=1)
+            tk.Label(row, text=f"{col.replace('_', ' ').title()}", width=25, anchor='w', bg=bg_col, font=("Segoe UI", 10, "bold"), fg="#34495e").pack(side=tk.LEFT, padx=10, pady=8)
+            val = dati.get(col, "-")
+            tk.Label(row, text=str(val), anchor='w', bg=bg_col, font=("Segoe UI", 10), fg="#2c3e50").pack(side=tk.LEFT, expand=True, padx=10)
 
-        btn_frame = tk.Frame(dialog)
-        btn_frame.pack(fill=tk.X, pady=10)
+        btn_frame = tk.Frame(dialog, bg="#f4f7f6")
+        btn_frame.pack(fill=tk.X, padx=20, pady=(0, 20))
 
         def mostra_dieta_locale():
             input_dict = {}
@@ -297,8 +377,8 @@ class AppStalla:
                 except Exception: input_dict[col] = 0.0
             self.mostra_dieta_from_values(id_vacca, input_dict)
 
-        tk.Button(btn_frame, text="Mostra Dieta", command=mostra_dieta_locale, bg="orange").pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="Chiudi", command=lambda: (dialog.destroy(), setattr(self, '_detail_window', None), setattr(self, '_detail_item', None))).pack(side=tk.RIGHT, padx=5)
+        self.create_modern_button(btn_frame, "📊 Calcola Dieta Ottimale", mostra_dieta_locale, "#e67e22", width=25).pack(side=tk.LEFT, pady=10)
+        self.create_modern_button(btn_frame, "✖ Chiudi", lambda: (dialog.destroy(), setattr(self, '_detail_window', None), setattr(self, '_detail_item', None)), "#95a5a6", width=15).pack(side=tk.RIGHT, pady=10)
 
     def carica_csv(self):
         if not os.path.exists(self.filepath):
@@ -308,11 +388,25 @@ class AppStalla:
             self.tree.delete(row)
         self.tutti_i_dati.clear()
         try:
-            with open(self.filepath, newline='', encoding='utf-8') as file:
+            with open(self.filepath, newline='', encoding='utf-8-sig') as file:
                 reader = csv.DictReader(file)
                 for row in reader:
-                    cow_id = str(row.get('id', '')).strip()
-                    dati_record = {col: (row.get(col, '').strip() if col in row else '') for col in self.colonne}
+                    # Rimuoviamo il BOM in caso sia presente anche se abbiamo usato utf-8-sig
+                    # e iteriamo per trovare l'id ignorando possibili caratteri invisibili
+                    id_key = next((k for k in row.keys() if k and k.strip().lower() == 'id'), None)
+                    if id_key is None:
+                        continue # Se non c'è una colonna ID valida, salto la riga
+
+                    cow_id = str(row.get(id_key, '')).strip()
+                    if not cow_id: # Salta righe vuote
+                        continue
+
+                    dati_record = {}
+                    for col in self.colonne:
+                        # cerchiamo la colonna corrispondente indipendentemente da spazi o BOM
+                        col_key = next((k for k in row.keys() if k and k.strip().lower() == col.lower()), col)
+                        dati_record[col] = str(row.get(col_key, '')).strip()
+
                     dati_record['name'] = row.get('name', '').strip() if 'name' in row else ''
                     dati_record['model'] = row.get('model', '').strip() if 'model' in row else ''
                     self.tutti_i_dati[cow_id] = dati_record
@@ -346,24 +440,51 @@ class AppStalla:
         dati = self.tutti_i_dati.get(cow_id, {})
 
         dialog = tk.Toplevel(self.root)
-        dialog.title("Modifica Dati Vacca")
-        dialog.geometry("500x700")
+        dialog.title("Modifica Anagrafica e Dati di Stalla")
+        dialog.geometry("600x800")
+        dialog.configure(bg="#f4f7f6")
+        
+        header_frame = tk.Frame(dialog, bg="#2980b9", height=50)
+        header_frame.pack(fill=tk.X, side=tk.TOP)
+        tk.Label(header_frame, text=f"Aggiornamento Dati - Matricola {cow_id}", bg="#2980b9", fg="white", font=("Segoe UI", 12, "bold")).pack(side=tk.LEFT, padx=15, pady=10)
+
+        main_frame = tk.Frame(dialog, bg="#ffffff", highlightbackground="#ddd", highlightthickness=1)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        canvas = tk.Canvas(main_frame, bg="#ffffff", highlightthickness=0)
+        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg="#ffffff")
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(
+                scrollregion=canvas.bbox("all")
+            )
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True, padx=5, pady=5)
+        scrollbar.pack(side="right", fill="y", padx=5)
+
         entries = {}
         
-        frame = tk.Frame(dialog)
-        frame.pack(fill=tk.X, padx=15, pady=5)
-        tk.Label(frame, text='name', width=25, anchor="w").pack(side=tk.LEFT)
-        entry_name = tk.Entry(frame)
-        entry_name.pack(side=tk.RIGHT, expand=True, fill=tk.X)
+        f_name = tk.Frame(scrollable_frame, bg="#f8f9fa", padx=10, pady=8)
+        f_name.pack(fill=tk.X, pady=2)
+        tk.Label(f_name, text='Nome Identificativo', width=25, anchor="w", bg="#f8f9fa", font=("Segoe UI", 9, "bold"), fg="#34495e").pack(side=tk.LEFT)
+        entry_name = tk.Entry(f_name, font=("Segoe UI", 10), bg="#ffffff", relief="solid")
+        entry_name.pack(side=tk.RIGHT, expand=True, fill=tk.X, ipady=4)
         entry_name.insert(0, dati.get('name', ''))
         entries['name'] = entry_name
 
-        for col in self.colonne:
-            frame = tk.Frame(dialog)
-            frame.pack(fill=tk.X, padx=15, pady=5)
-            tk.Label(frame, text=col, width=25, anchor="w").pack(side=tk.LEFT)
-            entry = tk.Entry(frame)
-            entry.pack(side=tk.RIGHT, expand=True, fill=tk.X)
+        for i, col in enumerate(self.colonne):
+            bg_col = "#ffffff" if i % 2 == 0 else "#f8f9fa"
+            frame = tk.Frame(scrollable_frame, bg=bg_col, padx=10, pady=8)
+            frame.pack(fill=tk.X, pady=2)
+            tk.Label(frame, text=col.replace('_', ' ').title(), width=25, anchor="w", bg=bg_col, font=("Segoe UI", 9, "bold"), fg="#34495e").pack(side=tk.LEFT)
+            entry = tk.Entry(frame, font=("Segoe UI", 10), bg="#ffffff", relief="solid")
+            entry.pack(side=tk.RIGHT, expand=True, fill=tk.X, ipady=4)
             entry.insert(0, str(dati.get(col, '')))
             entries[col] = entry
 
@@ -377,137 +498,183 @@ class AppStalla:
             self.tree.item(item_id, values=(new_id, self.tutti_i_dati[new_id].get('name','')))
             dialog.destroy()
 
-        tk.Button(dialog, text="Applica", command=applica_modifiche, bg="yellow").pack(pady=20)
+        btn_container = tk.Frame(dialog, bg="#f4f7f6")
+        btn_container.pack(fill=tk.X, pady=(0, 20))
+        self.create_modern_button(btn_container, "✓ Salva Conferme", applica_modifiche, "#27ae60", width=20).pack(pady=10)
 
     def aggiungi_record(self):
         dialog = tk.Toplevel(self.root)
-        dialog.title("Aggiungi Nuova Vacca")
-        dialog.geometry("500x700")
+        dialog.title("Registrazione Nuovo Capo in Stalla")
+        dialog.geometry("600x800")
+        dialog.configure(bg="#f4f7f6")
+        
+        header_frame = tk.Frame(dialog, bg="#16a085", height=50)
+        header_frame.pack(fill=tk.X, side=tk.TOP)
+        tk.Label(header_frame, text="Inserimento Nuova Scheda Anagrafica", bg="#16a085", fg="white", font=("Segoe UI", 12, "bold")).pack(side=tk.LEFT, padx=15, pady=10)
+
+        main_frame = tk.Frame(dialog, bg="#ffffff", highlightbackground="#ddd", highlightthickness=1)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        canvas = tk.Canvas(main_frame, bg="#ffffff", highlightthickness=0)
+        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg="#ffffff")
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(
+                scrollregion=canvas.bbox("all")
+            )
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True, padx=5, pady=5)
+        scrollbar.pack(side="right", fill="y", padx=5)
+
         entries = {}
         
-        frame = tk.Frame(dialog)
-        frame.pack(fill=tk.X, padx=15, pady=5)
-        tk.Label(frame, text='name', width=25, anchor="w").pack(side=tk.LEFT)
-        entry_name = tk.Entry(frame)
-        entry_name.pack(side=tk.RIGHT, expand=True, fill=tk.X)
+        f_name = tk.Frame(scrollable_frame, bg="#f8f9fa", padx=10, pady=8)
+        f_name.pack(fill=tk.X, pady=2)
+        tk.Label(f_name, text='Nome Identificativo', width=25, anchor="w", bg="#f8f9fa", font=("Segoe UI", 9, "bold"), fg="#34495e").pack(side=tk.LEFT)
+        entry_name = tk.Entry(f_name, font=("Segoe UI", 10), bg="#ffffff", relief="solid")
+        entry_name.pack(side=tk.RIGHT, expand=True, fill=tk.X, ipady=4)
         entries['name'] = entry_name
 
-        for col in self.colonne:
-            frame = tk.Frame(dialog)
-            frame.pack(fill=tk.X, padx=15, pady=5)
-            tk.Label(frame, text=col, width=25, anchor="w").pack(side=tk.LEFT)
-            entry = tk.Entry(frame)
-            entry.pack(side=tk.RIGHT, expand=True, fill=tk.X)
-            if col != "id": entry.insert(0, "0")
+        for i, col in enumerate(self.colonne):
+            bg_col = "#ffffff" if i % 2 == 0 else "#f8f9fa"
+            frame = tk.Frame(scrollable_frame, bg=bg_col, padx=10, pady=8)
+            frame.pack(fill=tk.X, pady=2)
+            tk.Label(frame, text=col.replace('_', ' ').title(), width=25, anchor="w", bg=bg_col, font=("Segoe UI", 9, "bold"), fg="#34495e").pack(side=tk.LEFT)
+            entry = tk.Entry(frame, font=("Segoe UI", 10), bg="#ffffff", relief="solid")
+            entry.pack(side=tk.RIGHT, expand=True, fill=tk.X, ipady=4)
             entries[col] = entry
 
-        def inserisci_nuova():
-            new_id = entries['id'].get().strip()
-            if not new_id:
-                messagebox.showwarning("Attenzione", "L'ID della vacca è obbligatorio!", parent=dialog)
-                return
-            if new_id in self.tutti_i_dati:
-                messagebox.showwarning("Attenzione", "ID già presente!", parent=dialog)
-                return
-            dati = {c: entries[c].get() for c in self.colonne}
-            dati['name'] = entries['name'].get()
-            self.tutti_i_dati[new_id] = dati
-            self.tree.insert("", tk.END, values=(new_id, dati.get('name','')))
-            dialog.destroy()
+        def salva_nuovo():
+            try:
+                nuovi = {col: entries[col].get() for col in entries}
+                new_id = nuovi.get('id', '').strip()
+                if not new_id:
+                    messagebox.showerror("Errore", "L'ID è obbligatorio!", parent=dialog)
+                    return
+                if new_id in self.tutti_i_dati:
+                    messagebox.showerror("Errore", f"L'ID {new_id} esiste già!", parent=dialog)
+                    return
+                
+                self.tutti_i_dati[new_id] = {c: nuovi.get(c, '') for c in self.colonne}
+                self.tutti_i_dati[new_id]['name'] = nuovi.get('name', '')
+                self.tree.insert("", tk.END, values=(new_id, self.tutti_i_dati[new_id]['name']))
+                dialog.destroy()
+            except Exception as e:
+                messagebox.showerror("Errore", str(e), parent=dialog)
 
-        tk.Button(dialog, text="Aggiungi in Tabella", command=inserisci_nuova, bg="lightpink").pack(pady=20)
+        btn_container = tk.Frame(dialog, bg="#f4f7f6")
+        btn_container.pack(fill=tk.X, pady=(0, 20))
+        self.create_modern_button(btn_container, "✓ Registra Capo", salva_nuovo, "#e67e22", width=20).pack(pady=10)
 
     def mostra_dieta(self):
-        selezionato = self.tree.selection()
-        if not selezionato:
-            messagebox.showwarning("Attenzione", "Seleziona prima una vacca dalla tabella.")
+        sel = self.tree.selection()
+        if not sel:
+            messagebox.showwarning('Attenzione', 'Seleziona prima una vacca dalla tabella.')
             return
-        item_id = selezionato[0]
-        valori_vis = self.tree.item(item_id)['values']
-        id_vacca = str(valori_vis[0])
-        dati = self.tutti_i_dati.get(id_vacca)
-        if dati is None:
-            messagebox.showerror("Errore", "Dati completi non trovati per la vacca selezionata.")
-            return
-            
+        item = sel[0]
+        valori = self.tree.item(item)['values']
+        cow_id = str(valori[0])
+        dati = self.tutti_i_dati.get(cow_id, {})
         input_dict = {}
         for col in self.colonne:
             if col == 'id': continue
-            try: input_dict[col] = float(dati.get(col, 0) if dati.get(col, '') != '' else 0.0)
+            try: input_dict[col] = float(dati.get(col, 0))
             except Exception: input_dict[col] = 0.0
-            
-        self.mostra_dieta_from_values(id_vacca, input_dict)
+        self.mostra_dieta_from_values(cow_id, input_dict)
 
     def mostra_dieta_from_values(self, id_vacca, input_dict):
         try:
-            risultato = calcola_razioni(input_dict)
-            win_dieta = tk.Toplevel(self.root)
-            win_dieta.title("Risultato Calcolo Dieta")
-            win_dieta.geometry("320x450")
+            from dieta import calcola_razioni
+            risultati = calcola_razioni(input_dict)
+            
+            top = tk.Toplevel(self.root)
+            top.title(f"Piano Alimentare - Matricola {id_vacca}")
+            top.geometry("700x550")
+            top.configure(bg="#f4f7f6")
+            
+            header = tk.Frame(top, bg="#d35400", height=60)
+            header.pack(fill=tk.X, side=tk.TOP)
+            tk.Label(header, text=f"Distribuzione Dieta Consigliata per {id_vacca}", bg="#d35400", fg="white", font=("Segoe UI", 16, "bold")).pack(side=tk.LEFT, padx=20, pady=15)
+            
+            main_frame = tk.Frame(top, bg="#ffffff", highlightbackground="#ddd", highlightthickness=1)
+            main_frame.pack(fill=tk.BOTH, expand=True, padx=25, pady=25)
+            
+            cat_frame = tk.Frame(main_frame, bg="#ffffff")
+            cat_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+            
+            foraggi = {k:v for k,v in risultati.items() if 'forage' in k.lower() or 'silage' in k.lower() or 'hay' in k.lower()}
+            concentrati = {k:v for k,v in risultati.items() if k not in foraggi}
+            
+            frame_foraggi = tk.Frame(cat_frame, bg="#e8f8f5", highlightbackground="#a3e4d7", highlightthickness=1)
+            frame_foraggi.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10, pady=10)
+            tk.Label(frame_foraggi, text="Foraggi / Fibra", font=("Segoe UI", 12, "bold"), bg="#1abc9c", fg="white").pack(fill=tk.X)
+            
+            frame_conc = tk.Frame(cat_frame, bg="#fef9e7", highlightbackground="#f9e79f", highlightthickness=1)
+            frame_conc.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=10, pady=10)
+            tk.Label(frame_conc, text="Concentrati / Integrazioni", font=("Segoe UI", 12, "bold"), bg="#f1c40f", fg="#333333").pack(fill=tk.X)
+            
+            for k, val in foraggi.items():
+                row = tk.Frame(frame_foraggi, bg="#e8f8f5")
+                row.pack(fill=tk.X, padx=15, pady=6)
+                tk.Label(row, text=k.replace('_', ' ').title() + ":", bg="#e8f8f5", font=("Segoe UI", 10, "bold"), fg="#2c3e50", anchor="w").pack(side=tk.LEFT)
+                tk.Label(row, text=f"{val:.2f} kg", bg="#e8f8f5", font=("Segoe UI", 10), fg="#34495e").pack(side=tk.RIGHT)
+                
+            for k, val in concentrati.items():
+                row = tk.Frame(frame_conc, bg="#fef9e7")
+                row.pack(fill=tk.X, padx=15, pady=6)
+                tk.Label(row, text=k.replace('_', ' ').title() + ":", bg="#fef9e7", font=("Segoe UI", 10, "bold"), fg="#2c3e50", anchor="w").pack(side=tk.LEFT)
+                tk.Label(row, text=f"{val:.2f} kg", bg="#fef9e7", font=("Segoe UI", 10), fg="#34495e").pack(side=tk.RIGHT)
+            
+            tot = sum(risultati.values())
+            tot_frame = tk.Frame(main_frame, bg="#f8f9fa", highlightbackground="#bdc3c7", highlightthickness=1)
+            tot_frame.pack(fill=tk.X, padx=20, pady=15)
+            tk.Label(tot_frame, text=f"Totale Stimato: {tot:.2f} kg/giorno", font=("Segoe UI", 14, "bold"), bg="#f8f9fa", fg="#c0392b").pack(pady=15)
 
-            tk.Label(win_dieta, text=f"ID Vacca: {id_vacca}", font=("Arial", 12, "bold")).pack(pady=10)
-            frame_dati = tk.Frame(win_dieta)
-            frame_dati.pack(padx=20, fill=tk.BOTH, expand=True)
-
-            tk.Label(frame_dati, text="FORAGGI", font=("Arial", 10, "bold"), fg="darkgreen").grid(row=0, column=0, sticky="w", pady=(10, 5))
-            foraggi = [
-                ("Erba Medica", risultato['Erba_Medica']),
-                ("Insilato Erba", risultato['Insilato_Erba']),
-                ("Fieno 1° Taglio", risultato['Fieno_1_Taglio']),
-                ("Fieno 2° Taglio", risultato['Fieno_2_Taglio']),
-                ("Fieno 3° Taglio", risultato['Fieno_3_Taglio'])
-            ]
-            riga = 1
-            for nome, val in foraggi:
-                tk.Label(frame_dati, text=f"• {nome}:", font=("Arial", 10)).grid(row=riga, column=0, sticky="w", padx=10)
-                tk.Label(frame_dati, text=f"{val:.2f} kg", font=("Arial", 10)).grid(row=riga, column=1, sticky="e")
-                riga += 1
-
-            tk.Label(frame_dati, text="CONCENTRATI", font=("Arial", 10, "bold"), fg="darkorange").grid(row=riga, column=0, sticky="w", pady=(15, 5))
-            riga += 1
-            concentrati = [
-                ("Mais", risultato['Mais']),
-                ("Orzo", risultato['Orzo']),
-                ("Soia", risultato['Soia']),
-                ("Crusca", risultato['Crusca']),
-                ("Mangimi Vari", risultato['Mangimi_Vari'])
-            ]
-            for nome, val in concentrati:
-                tk.Label(frame_dati, text=f"• {nome}:", font=("Arial", 10)).grid(row=riga, column=0, sticky="w", padx=10)
-                tk.Label(frame_dati, text=f"{val:.2f} kg", font=("Arial", 10)).grid(row=riga, column=1, sticky="e")
-                riga += 1
-
-            frame_dati.columnconfigure(0, weight=1)
-            tk.Button(win_dieta, text="Chiudi", command=win_dieta.destroy, width=15).pack(pady=15)
+            btn_frame = tk.Frame(top, bg="#f4f7f6")
+            btn_frame.pack(fill=tk.X, padx=25, pady=(0, 20))
+            self.create_modern_button(btn_frame, "Stampa / Esporta", lambda: messagebox.showinfo("Esportazione", "Funzionalità in sviluppo.", parent=top), "#3498db", width=20).pack(side=tk.LEFT, pady=10)
+            self.create_modern_button(btn_frame, "✖ Chiudi Riepilogo", top.destroy, "#95a5a6", width=20).pack(side=tk.RIGHT, pady=10)
+            
         except Exception as e:
-            messagebox.showerror("Errore", f"Si è verificato un errore durante il calcolo:\n{e}")
+            messagebox.showerror('Errore Modello', f'Errore calcolo:\n{e}')
 
     # --- LOGICA HARDWARE E TERMINALE ---
     
     def log(self, messaggio):
-        self.log_queue.put(messaggio)
+        ts = datetime.now().strftime("%H:%M:%S")
+        self.log_queue.put(f"[{ts}] {messaggio}")
         
     def aggiorna_terminale_gui(self):
-        while not self.log_queue.empty():
-            messaggio = self.log_queue.get()
-            self.log_text.config(state=tk.NORMAL)
-            self.log_text.insert(tk.END, messaggio + "\n")
-            self.log_text.see(tk.END)
-            self.log_text.config(state=tk.DISABLED)
+        try:
+            while True:
+                msg = self.log_queue.get_nowait()
+                self.log_text.config(state=tk.NORMAL)
+                self.log_text.insert(tk.END, msg + "\n")
+                self.log_text.see(tk.END)
+                self.log_text.config(state=tk.DISABLED)
+        except queue.Empty:
+            pass
         self.root.after(100, self.aggiorna_terminale_gui)
 
     def toggle_mangiatoia(self):
         if not self.mangiatoia_running:
             self.mangiatoia_running = True
-            self.btn_mangiatoia.config(text="⏹ Ferma Mangiatoia", bg="indianred")
-            self.log(">>> INIZIALIZZAZIONE SISTEMA MANGIATOIA...")
-            
+            self.btn_mangiatoia.config(text="⏹ Ferma Sistema Autom.", bg="#e74c3c")
+            self.log("Avvio del Job Mangiatoia in background...")
+            if not HARDWARE_AVAILABLE:
+                self.log("-> HARDWARE NON RILEVATO. Modalità SIMULAZIONE attiva.")
             self.thread_mangiatoia = threading.Thread(target=self.loop_hardware_mangiatoia, daemon=True)
             self.thread_mangiatoia.start()
         else:
             self.mangiatoia_running = False
-            self.btn_mangiatoia.config(text="▶ Avvia Mangiatoia", bg="mediumseagreen")
-            self.log(">>> RICHIESTA DI ARRESTO MANGIATOIA IN CORSO...")
+            self.btn_mangiatoia.config(text="▶ Avvia Sistema Autom.", bg=self.secondary_color)
+            self.log("Arresto del Job Mangiatoia richiesto...")
 
     def ha_gia_mangiato_oggi(self, cow_id):
         if not os.path.exists(self.file_path_registro):
@@ -593,7 +760,7 @@ class AppStalla:
                     kg_concentrati = round(risultato['Mais'] + risultato['Orzo'] + risultato['Soia'] + risultato['Crusca'] + risultato['Mangimi_Vari'], 2)
                     
                     giri_foraggi = kg_foraggi / self.rapportoForaggi
-                    
+                  
                     if HARDWARE_AVAILABLE and ser:
                         comando = f"{giri_foraggi:.2f}\n" 
                         ser.write(comando.encode('utf-8'))
