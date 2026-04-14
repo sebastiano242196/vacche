@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import csv
 import os
+import glob
 import pandas as pd
 from datetime import datetime
 import threading
@@ -10,6 +11,12 @@ import time
 
 # Importiamo la nostra funzione personalizzata dal file esterno
 from dieta import calcola_razioni
+
+try:
+    from PIL import Image, ImageTk
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
 
 # --- TENTATIVO DI IMPORTAZIONE HARDWARE RASPBERRY ---
 try:
@@ -60,8 +67,10 @@ class AppStalla:
             "SCC", "Ruminazione_min", "pH_Ruminale", "BHB_mmol_L", "Manure_Score"
         ]
 
-        self.display_columns = ["id", "name"]
         self.tutti_i_dati = {}
+        self.selected_cow_id = None
+        self.card_images = {}
+        self.cow_card_frames = {}
 
         # Variabili per il controllo della Mangiatoia
         self.mangiatoia_running = False
@@ -117,7 +126,7 @@ class AppStalla:
         frame_centrale = tk.Frame(self.root, bg=self.bg_color)
         frame_centrale.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 20))
 
-        # --- Sezione Tabella ---
+        # --- Sezione Elenco Capi (Nome + Immagine) ---
         frame_tabella_container = tk.Frame(frame_centrale, bg=self.panel_bg, highlightbackground="#ddd", highlightthickness=1)
         frame_tabella_container.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         
@@ -128,26 +137,19 @@ class AppStalla:
         frame_tabella = tk.Frame(frame_tabella_container, bg=self.panel_bg)
         frame_tabella.pack(fill=tk.BOTH, expand=True, padx=15, pady=(0, 15))
 
-        scroll_y = ttk.Scrollbar(frame_tabella, orient=tk.VERTICAL)
-        scroll_x = ttk.Scrollbar(frame_tabella, orient=tk.HORIZONTAL)
-
-        self.tree = ttk.Treeview(frame_tabella, columns=self.display_columns, show="headings",
-                                 yscrollcommand=scroll_y.set, xscrollcommand=scroll_x.set)
-
-        scroll_y.config(command=self.tree.yview)
-        scroll_x.config(command=self.tree.xview)
+        self.cards_canvas = tk.Canvas(frame_tabella, bg=self.panel_bg, highlightthickness=0)
+        scroll_y = ttk.Scrollbar(frame_tabella, orient=tk.VERTICAL, command=self.cards_canvas.yview)
+        self.cards_canvas.configure(yscrollcommand=scroll_y.set)
 
         scroll_y.pack(side=tk.RIGHT, fill=tk.Y)
-        scroll_x.pack(side=tk.BOTTOM, fill=tk.X)
-        self.tree.pack(fill=tk.BOTH, expand=True)
+        self.cards_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        for col in self.display_columns:
-            width = 300 if col == 'name' else 150
-            label = 'Nome Identificativo' if col == 'name' else 'Matricola (ID)'
-            self.tree.heading(col, text=label)
-            self.tree.column(col, width=width, anchor=tk.CENTER)
+        self.cards_frame = tk.Frame(self.cards_canvas, bg=self.panel_bg)
+        self.cards_canvas_window = self.cards_canvas.create_window((0, 0), window=self.cards_frame, anchor='nw')
 
-        self.tree.bind('<<TreeviewSelect>>', self.on_select)
+        self.cards_frame.bind("<Configure>", lambda e: self.cards_canvas.configure(scrollregion=self.cards_canvas.bbox("all")))
+        self.cards_canvas.bind("<Configure>", self._on_cards_canvas_resize)
+
         self._detail_window = None
         self._detail_item = None
 
@@ -167,32 +169,13 @@ class AppStalla:
         self.lbl_selected_name = tk.Label(info_frame, text='Nome: -', bg="#f8f9fa", font=("Segoe UI", 10, "bold"))
         self.lbl_selected_name.pack(anchor='w', pady=2)
 
-        def open_3d_viewer():
-            sel = self.tree.selection()
-            if not sel:
-                messagebox.showwarning('Attenzione', 'Seleziona prima una vacca dalla tabella.')
-                return
-            item = sel[0]
-            valori = self.tree.item(item)['values']
-            cow_id = str(valori[0])
-            model_path = None
-            dati = self.tutti_i_dati.get(cow_id, {})
-            model_path = dati.get('model') if isinstance(dati, dict) else None
-            if not model_path:
-                messagebox.showwarning('Modello non trovato', f"Modello 3D non specificato per la vacca {cow_id}.")
-                return
-            model_abspath = os.path.abspath(os.path.join(os.path.dirname(__file__), model_path))
-            if not os.path.exists(model_abspath):
-                messagebox.showwarning('Modello non trovato', f"File modello non trovato:\n{model_abspath}")
-                return
-            import webbrowser
-            url = model_abspath.replace('\\','/')
-            viewer = os.path.join('models','viewer.html')
-            viewer_path = os.path.abspath(os.path.join(os.path.dirname(__file__), viewer)).replace('\\','/')
-            webbrowser.open(f'file:///{viewer_path}?model=file:///{url}')
+        self.create_modern_button(
+            right_panel,
+            "📄 Apri Scheda Completa",
+            self.apri_dettagli_selezionata,
+            "#2980b9"
+        ).pack(fill=tk.X, padx=15, pady=(5, 10))
 
-        self.create_modern_button(right_panel, "🐄 Visualizza Modello 3D", open_3d_viewer, "#34495e").pack(fill=tk.X, padx=15, pady=15)
-        
         separator = ttk.Separator(right_panel, orient='horizontal')
         separator.pack(fill=tk.X, padx=15, pady=10)
         
@@ -210,6 +193,136 @@ class AppStalla:
         self.log_text = tk.Text(frame_log, bg="#1e1e1e", fg="#4af626", font=("Consolas", 9), relief="flat")
         self.log_text.pack(fill=tk.BOTH, expand=True, pady=5)
         self.log_text.config(state=tk.DISABLED)
+
+    def _on_cards_canvas_resize(self, event):
+        self.cards_canvas.itemconfig(self.cards_canvas_window, width=event.width)
+
+    def _resolve_image_path(self, image_value):
+        if not image_value:
+            return None
+        raw = str(image_value).strip()
+        if not raw:
+            return None
+        candidate = raw
+        if not os.path.isabs(candidate):
+            candidate = os.path.join(os.path.dirname(__file__), candidate)
+        if os.path.exists(candidate):
+            return candidate
+
+        immagini_dir = os.path.join(os.path.dirname(__file__), "immagini")
+        fallback = os.path.join(immagini_dir, raw)
+        if os.path.exists(fallback):
+            return fallback
+
+        base_name = os.path.splitext(os.path.basename(raw))[0].lower()
+        for ext in ("*.png", "*.jpg", "*.jpeg", "*.gif", "*.webp"):
+            for item in glob.glob(os.path.join(immagini_dir, ext)):
+                if os.path.splitext(os.path.basename(item))[0].lower() == base_name:
+                    return item
+        return None
+
+    def _list_available_images(self):
+        immagini_dir = os.path.join(os.path.dirname(__file__), "immagini")
+        if not os.path.isdir(immagini_dir):
+            return []
+        files = []
+        for ext in ("*.png", "*.jpg", "*.jpeg", "*.gif", "*.webp"):
+            files.extend(glob.glob(os.path.join(immagini_dir, ext)))
+        return sorted(files)
+
+    def _load_card_image(self, image_path):
+        if not image_path:
+            return None
+        try:
+            if PIL_AVAILABLE:
+                image = Image.open(image_path)
+                width, height = image.size
+                ratio = min(220 / max(width, 1), 150 / max(height, 1), 1)
+                new_size = (max(1, int(width * ratio)), max(1, int(height * ratio)))
+                if new_size != (width, height):
+                    image = image.resize(new_size)
+                return ImageTk.PhotoImage(image)
+            return tk.PhotoImage(file=image_path)
+        except Exception:
+            return None
+
+    def _bind_card_click(self, widget, cow_id):
+        widget.bind("<Button-1>", lambda _e, c=cow_id: self.select_cow(c))
+        widget.bind("<Double-Button-1>", lambda _e, c=cow_id: self.apri_dettagli(c))
+
+    def refresh_cow_cards(self):
+        for child in self.cards_frame.winfo_children():
+            child.destroy()
+        self.card_images.clear()
+        self.cow_card_frames.clear()
+        available_images = self._list_available_images()
+
+        sorted_ids = sorted(self.tutti_i_dati.keys())
+        for index, cow_id in enumerate(sorted_ids):
+            dati = self.tutti_i_dati.get(cow_id, {})
+            name = dati.get('name', '') or f"Vacca {cow_id}"
+            image_file = dati.get('image', '')
+            image_path = self._resolve_image_path(image_file)
+            if not image_path and available_images:
+                image_path = available_images[index % len(available_images)]
+                rel_path = os.path.relpath(image_path, os.path.dirname(__file__)).replace('\\', '/')
+                dati['image'] = rel_path
+
+            card = tk.Frame(self.cards_frame, bg="#ffffff", highlightbackground="#dfe6e9", highlightthickness=1, bd=0)
+            row = index // 2
+            col = index % 2
+            card.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
+            self.cards_frame.grid_columnconfigure(col, weight=1)
+
+            img_container = tk.Frame(card, bg="#ffffff")
+            img_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=(10, 5))
+
+            if image_path:
+                image = self._load_card_image(image_path)
+                if image:
+                    self.card_images[cow_id] = image
+                    img_label = tk.Label(img_container, image=image, bg="#ffffff")
+                    img_label.pack(pady=3)
+                    self._bind_card_click(img_label, cow_id)
+                else:
+                    tk.Label(img_container, text="Immagine non valida", bg="#ffffff", fg="#7f8c8d", font=("Segoe UI", 9, "italic")).pack(pady=20)
+            else:
+                tk.Label(img_container, text="Nessuna immagine", bg="#ffffff", fg="#7f8c8d", font=("Segoe UI", 9, "italic")).pack(pady=20)
+
+            tk.Label(card, text=name, bg="#ffffff", fg="#2c3e50", font=("Segoe UI", 11, "bold")).pack(pady=(3, 0), padx=10)
+            tk.Label(card, text=f"ID: {cow_id}", bg="#ffffff", fg="#7f8c8d", font=("Segoe UI", 9)).pack(pady=(0, 10), padx=10)
+
+            self._bind_card_click(card, cow_id)
+            self.cow_card_frames[cow_id] = card
+
+        if self.selected_cow_id and self.selected_cow_id in self.tutti_i_dati:
+            self.select_cow(self.selected_cow_id)
+        elif sorted_ids:
+            self.select_cow(sorted_ids[0])
+
+    def select_cow(self, cow_id):
+        cow_id = str(cow_id)
+        if cow_id not in self.tutti_i_dati:
+            return
+
+        self.selected_cow_id = cow_id
+        dati = self.tutti_i_dati.get(cow_id, {})
+        name = dati.get('name', '') or f"Vacca {cow_id}"
+
+        self.lbl_selected_id.config(text=f'Matricola: {cow_id}')
+        self.lbl_selected_name.config(text=f'Nome: {name}')
+
+        for card_id, frame in self.cow_card_frames.items():
+            if card_id == cow_id:
+                frame.config(highlightbackground="#18bc9c", highlightthickness=2)
+            else:
+                frame.config(highlightbackground="#dfe6e9", highlightthickness=1)
+
+    def apri_dettagli_selezionata(self):
+        if not self.selected_cow_id:
+            messagebox.showwarning("Attenzione", "Seleziona prima una vacca dall'elenco.")
+            return
+        self.apri_dettagli(self.selected_cow_id)
 
     # --- NUOVA SEZIONE: GESTIONE PASTI ---
     def apri_gestione_pasti(self):
@@ -320,25 +433,11 @@ class AppStalla:
 
     # --- FUNZIONI DI LOGICA INTERFACCIA ORIGINALI ---
     def on_select(self, event):
-        selezionato = self.tree.selection()
-        if not selezionato: return
-        item_id = selezionato[0]
-        valori_vis = self.tree.item(item_id)['values']
-        cow_id = str(valori_vis[0]) if valori_vis else ''
-        name = ''
-        dati = self.tutti_i_dati.get(cow_id)
-        if dati:
-            name = dati.get('name','')
-        else:
-            if len(valori_vis) > 1: name = valori_vis[1]
-        self.lbl_selected_id.config(text=f'Matricola: {cow_id}')
-        self.lbl_selected_name.config(text=f'Nome: {name}')
-        if self._detail_window is not None and self._detail_item == item_id: return
-        self.apri_dettagli(item_id)
+        return
 
-    def apri_dettagli(self, item_id):
-        valori = self.tree.item(item_id)['values']
-        id_vacca = str(valori[0])
+    def apri_dettagli(self, cow_id):
+        id_vacca = str(cow_id)
+        self.select_cow(id_vacca)
         if self._detail_window is not None:
             try: self._detail_window.destroy()
             except Exception: pass
@@ -347,7 +446,7 @@ class AppStalla:
         dialog.geometry("550x750")
         dialog.configure(bg="#f4f7f6")
         self._detail_window = dialog
-        self._detail_item = item_id
+        self._detail_item = id_vacca
 
         header = tk.Frame(dialog, bg="#2c3e50", height=50)
         header.pack(fill=tk.X, side=tk.TOP)
@@ -384,8 +483,6 @@ class AppStalla:
         if not os.path.exists(self.filepath):
             messagebox.showwarning("File non trovato", f"Non ho trovato il file '{self.filepath}'.")
             return
-        for row in self.tree.get_children():
-            self.tree.delete(row)
         self.tutti_i_dati.clear()
         try:
             with open(self.filepath, newline='', encoding='utf-8-sig') as file:
@@ -407,22 +504,27 @@ class AppStalla:
                         col_key = next((k for k in row.keys() if k and k.strip().lower() == col.lower()), col)
                         dati_record[col] = str(row.get(col_key, '')).strip()
 
-                    dati_record['name'] = row.get('name', '').strip() if 'name' in row else ''
+                    dati_record['name'] = row.get('name', '').strip() if 'name' in row else f"Vacca {cow_id}"
+                    dati_record['image'] = row.get('image', '').strip() if 'image' in row else ''
                     dati_record['model'] = row.get('model', '').strip() if 'model' in row else ''
                     self.tutti_i_dati[cow_id] = dati_record
-                    self.tree.insert("", tk.END, values=(cow_id, dati_record.get('name','')))
+            self.refresh_cow_cards()
         except Exception as e:
             messagebox.showerror("Errore", f"Impossibile leggere il file:\n{e}")
 
     def salva_csv(self):
         try:
             with open(self.filepath, mode='w', newline='', encoding='utf-8') as file:
-                header = ['id'] + [c for c in self.colonne if c != 'id']
-                if 'name' not in header: header.insert(1, 'name')
+                header = ['id', 'name', 'image', 'model'] + [c for c in self.colonne if c != 'id']
                 writer = csv.DictWriter(file, fieldnames=header)
                 writer.writeheader()
                 for cow_id, data in self.tutti_i_dati.items():
-                    row = {'id': cow_id, 'name': data.get('name','')}
+                    row = {
+                        'id': cow_id,
+                        'name': data.get('name', ''),
+                        'image': data.get('image', ''),
+                        'model': data.get('model', '')
+                    }
                     for c in self.colonne: row[c] = data.get(c, '')
                     writer.writerow(row)
             messagebox.showinfo("Successo", "File aggiornato correttamente!")
@@ -430,13 +532,10 @@ class AppStalla:
             messagebox.showerror("Errore", f"Impossibile salvare il file:\n{e}")
 
     def modifica_record(self):
-        selezionato = self.tree.selection()
-        if not selezionato:
-            messagebox.showwarning("Attenzione", "Seleziona prima una vacca dalla tabella per modificarla.")
+        if not self.selected_cow_id:
+            messagebox.showwarning("Attenzione", "Seleziona prima una vacca dall'elenco.")
             return
-        item_id = selezionato[0]
-        valori = self.tree.item(item_id)['values']
-        cow_id = str(valori[0])
+        cow_id = str(self.selected_cow_id)
         dati = self.tutti_i_dati.get(cow_id, {})
 
         dialog = tk.Toplevel(self.root)
@@ -478,6 +577,14 @@ class AppStalla:
         entry_name.insert(0, dati.get('name', ''))
         entries['name'] = entry_name
 
+        f_image = tk.Frame(scrollable_frame, bg="#ffffff", padx=10, pady=8)
+        f_image.pack(fill=tk.X, pady=2)
+        tk.Label(f_image, text='Immagine (path)', width=25, anchor="w", bg="#ffffff", font=("Segoe UI", 9, "bold"), fg="#34495e").pack(side=tk.LEFT)
+        entry_image = tk.Entry(f_image, font=("Segoe UI", 10), bg="#ffffff", relief="solid")
+        entry_image.pack(side=tk.RIGHT, expand=True, fill=tk.X, ipady=4)
+        entry_image.insert(0, dati.get('image', ''))
+        entries['image'] = entry_image
+
         for i, col in enumerate(self.colonne):
             bg_col = "#ffffff" if i % 2 == 0 else "#f8f9fa"
             frame = tk.Frame(scrollable_frame, bg=bg_col, padx=10, pady=8)
@@ -495,7 +602,9 @@ class AppStalla:
                 self.tutti_i_dati.pop(cow_id, None)
             self.tutti_i_dati[new_id] = {c: nuovi.get(c, '') for c in self.colonne}
             self.tutti_i_dati[new_id]['name'] = nuovi.get('name', '')
-            self.tree.item(item_id, values=(new_id, self.tutti_i_dati[new_id].get('name','')))
+            self.tutti_i_dati[new_id]['image'] = nuovi.get('image', '')
+            self.selected_cow_id = new_id
+            self.refresh_cow_cards()
             dialog.destroy()
 
         btn_container = tk.Frame(dialog, bg="#f4f7f6")
@@ -541,6 +650,13 @@ class AppStalla:
         entry_name.pack(side=tk.RIGHT, expand=True, fill=tk.X, ipady=4)
         entries['name'] = entry_name
 
+        f_image = tk.Frame(scrollable_frame, bg="#ffffff", padx=10, pady=8)
+        f_image.pack(fill=tk.X, pady=2)
+        tk.Label(f_image, text='Immagine (path)', width=25, anchor="w", bg="#ffffff", font=("Segoe UI", 9, "bold"), fg="#34495e").pack(side=tk.LEFT)
+        entry_image = tk.Entry(f_image, font=("Segoe UI", 10), bg="#ffffff", relief="solid")
+        entry_image.pack(side=tk.RIGHT, expand=True, fill=tk.X, ipady=4)
+        entries['image'] = entry_image
+
         for i, col in enumerate(self.colonne):
             bg_col = "#ffffff" if i % 2 == 0 else "#f8f9fa"
             frame = tk.Frame(scrollable_frame, bg=bg_col, padx=10, pady=8)
@@ -563,7 +679,9 @@ class AppStalla:
                 
                 self.tutti_i_dati[new_id] = {c: nuovi.get(c, '') for c in self.colonne}
                 self.tutti_i_dati[new_id]['name'] = nuovi.get('name', '')
-                self.tree.insert("", tk.END, values=(new_id, self.tutti_i_dati[new_id]['name']))
+                self.tutti_i_dati[new_id]['image'] = nuovi.get('image', '')
+                self.selected_cow_id = new_id
+                self.refresh_cow_cards()
                 dialog.destroy()
             except Exception as e:
                 messagebox.showerror("Errore", str(e), parent=dialog)
@@ -573,13 +691,10 @@ class AppStalla:
         self.create_modern_button(btn_container, "✓ Registra Capo", salva_nuovo, "#e67e22", width=20).pack(pady=10)
 
     def mostra_dieta(self):
-        sel = self.tree.selection()
-        if not sel:
-            messagebox.showwarning('Attenzione', 'Seleziona prima una vacca dalla tabella.')
+        if not self.selected_cow_id:
+            messagebox.showwarning('Attenzione', "Seleziona prima una vacca dall'elenco.")
             return
-        item = sel[0]
-        valori = self.tree.item(item)['values']
-        cow_id = str(valori[0])
+        cow_id = str(self.selected_cow_id)
         dati = self.tutti_i_dati.get(cow_id, {})
         input_dict = {}
         for col in self.colonne:
@@ -607,9 +722,29 @@ class AppStalla:
             
             cat_frame = tk.Frame(main_frame, bg="#ffffff")
             cat_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-            
-            foraggi = {k:v for k,v in risultati.items() if 'forage' in k.lower() or 'silage' in k.lower() or 'hay' in k.lower()}
-            concentrati = {k:v for k,v in risultati.items() if k not in foraggi}
+
+            foraggi_keys = {
+                'Erba_Medica',
+                'Insilato_Erba',
+                'Fieno_1_Taglio',
+                'Fieno_2_Taglio',
+                'Fieno_3_Taglio'
+            }
+            concentrati_keys = {
+                'Mais',
+                'Orzo',
+                'Soia',
+                'Crusca',
+                'Mangimi_Vari'
+            }
+
+            foraggi = {k: v for k, v in risultati.items() if k in foraggi_keys}
+            concentrati = {k: v for k, v in risultati.items() if k in concentrati_keys}
+
+            # Fallback safety: if new keys are added in the model, keep them visible.
+            extra_keys = [k for k in risultati.keys() if k not in foraggi and k not in concentrati]
+            for k in extra_keys:
+                concentrati[k] = risultati[k]
             
             frame_foraggi = tk.Frame(cat_frame, bg="#e8f8f5", highlightbackground="#a3e4d7", highlightthickness=1)
             frame_foraggi.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10, pady=10)
